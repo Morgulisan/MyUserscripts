@@ -2,8 +2,8 @@
 // @name         Highlight in TopList
 // @namespace    http://tampermonkey.net/
 // @version      0.3
-// @description  Hilights my team in my TopList
-// @author       You
+// @description  Highlights my team in the TopList Ranking with a background color
+// @author       Malte Kretzschmar
 // @match        https://vertrieb.tecis.de:11059/gr/reporting/ur/topvp.do
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
 // @grant        none
@@ -42,7 +42,7 @@
         });
 
 
-        //Swap on same value for fair Partner Comparision
+        //Swap on same value for fair Partner comparison
         let rows = document.querySelector("#row > tbody").getElementsByTagName("tr");
         for (let i = 0, j = 1; i < rows.length - 1; i += j) {
             j = 1;
