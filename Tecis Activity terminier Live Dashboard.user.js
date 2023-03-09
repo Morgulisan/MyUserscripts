@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         Tecis Activity terminier Live Dashboard
 // @namespace    http://tampermonkey.net/
-// @version      0.1
+// @version      0.2
 // @description  try to take over the world!
 // @author       You
-// @match        https://vertrieb.tecis.de/group/tecis/betreuung/activity/,DanaInfo=.atfelwuuy1jvK49w7820yyTC1932Ib68+mein-team
+// @match        https://vertrieb.tecis.de/group/tecis/betreuung/activity/*+mein-team,  https://vertrieb.tecis.de/group/tecis//betreuung/activity/*+mein-team
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
 // @grant        none
 // ==/UserScript==
