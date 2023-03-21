@@ -2,11 +2,12 @@
 // @name         Tecis Tis autologin
 // @namespace    https://stay.app/
 // @version      0.1
-// @description  Beim ersten aufruf des tis wird automatisch auf die Startseite weitergeleitet
+// @description  Beim ersten Aufruf des tis wird automatisch auf die Startseite weitergeleitet
 // @author       Malte
 // @match        https://vertrieb.tecis.de:11059/pkmslogin.form
 // @grant        none
 // @run-at       document-start
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
 // ==/UserScript==
 
 (function() {
