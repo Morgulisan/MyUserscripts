@@ -19,6 +19,7 @@
             let selectables = [
                 {name: "UBR Voss", value: 1300},
                 {name: "GM Mertz", value: 172},
+                {name: "Team Mertz", value: 171},
                 {name: "tecis gesamt", value: 0},
             ];
 

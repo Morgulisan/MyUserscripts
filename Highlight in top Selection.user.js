@@ -5,6 +5,7 @@
 // @description  Highlights my team in the TopList Ranking with a background color
 // @author       Malte Kretzschmar
 // @match        https://vertrieb.tecis.de:11059/gr/reporting/ur/topvp.do
+// @match        https://vertrieb.tecis.de:11059/gr/reporting/top/topanmeldungen.do
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
 // @grant        none
 // ==/UserScript==
