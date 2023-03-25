@@ -10,7 +10,7 @@
 // @grant        none
 // ==/UserScript==
 
-(function() {
+(function () {
     'use strict';
 
     const ladezeitInMs = 2000;
@@ -87,19 +87,18 @@
         document.getElementById("score").innerHTML = highscoreTableHTML;
     }
 
-
-
-    window.addEventListener("load",function (e) {
-
-        function inIframe () {
-            try {
-                return window.self !== window.top;
-            } catch (e) {
-                return true;
-            }
+    //find Out if Running in Iframe
+    function inIframe() {
+        try {
+            return window.self !== window.top;
+        } catch (e) {
+            return true;
         }
+    }
 
-        setTimeout(async function (e) {
+    window.addEventListener("load", function () {
+
+        setTimeout(async function () {
 
             if (inIframe()) {
                 //alle ausklappen
@@ -144,46 +143,58 @@
                     scores[name] = {name: name, termine_alt: alt, termine_neu: alt}
                 }
 
-                document.getElementsByTagName("body")[0].innerHTML = '<style id="style"></style><h1>Gemeinsames Terminieren am ' + new Date().toLocaleDateString('de-DE') + '<button id="ref">&#10227;</button></h1><div id="content"><div id="number"></div></div><div id="score"></div><div id="tec"></div>';
-                document.getElementById("style").innerHTML = ' table {' +
-                    '            margin: 0 auto;' +
-                    '            width: 70%;' +
-                    '            border-collapse: collapse;' +
-                    '        }' +
-                    '        th, td {' +
-                    '            padding: 10px;' +
-                    '            text-align: left;' +
-                    '            vertical-align: top;' +
-                    '            border: 1px solid #009ee3;' +
-                    '        }' +
-                    '        th {' +
-                    '            background-color: #009ee3;' +
-                    '            color: #ffffff;' +
-                    '            font-weight: bold;' +
-                    '        }' +
-                    '       #content {' +
-                    '           display: flex;' +
-                    '           justify-content: space-evenly;' +
-                    '       }' +
-                    '       #ref {' +
-                    '           background: none;' +
-                    '           border: none;' +
-                    '           color: #009ee3;' +
-                    '           float: right;' +
-                    '           cursor: pointer;' +
-                    '       }' +
-                    '       @keyframes FullRotation {' +
-                    '           from { transform: rotate(0deg); }' +
-                    '           to { transform: rotate(360deg); }' +
-                    '       }' +
-                    '       .rotate{' +
-                    '           animation: FullRotation 2s ease-out;' +
-                    '        }';
+                document.getElementsByTagName("body")[0].innerHTML = `
+  <style id="style"></style>
+  <h1>Gemeinsames Terminieren am ${new Date().toLocaleDateString('de-DE')}
+    <button id="settings">&#9881;</button><button id="refresh">&#10227;</button>
+  </h1>
+  <div id="content">
+    <div id="number"></div>
+  </div>
+  <div id="score"></div>
+  <div id="tec"></div>
+`;
+                document.getElementById("style").innerHTML = `
+  table {
+    margin: 0 auto;
+    width: 70%;
+    border-collapse: collapse;
+  }
+  th, td {
+    padding: 10px;
+    text-align: left;
+    vertical-align: top;
+    border: 1px solid #009ee3;
+  }
+  th {
+    background-color: #009ee3;
+    color: #ffffff;
+    font-weight: bold;
+  }
+  #content {
+    display: flex;
+    justify-content: space-evenly;
+  }
+  button {
+    background: none;
+    border: none;
+    color: #009ee3;
+    float: right;
+    cursor: pointer;
+  }
+  @keyframes FullRotation {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  .rotate {
+    animation: FullRotation 2s ease-out;
+  }
+`;
 
                 $(window).on('storage', message_receive);
                 let number = document.getElementById("number");
                 let tec = document.getElementById("tec");
-                let ref = document.getElementById("ref");
+                let refresh = document.getElementById("refresh");
                 number.style.fontSize = "50vh";
                 number.style.color = "darkblue";
                 number.style.lineHeight = " 1";
@@ -191,12 +202,14 @@
                 tec.style.opacity = "1%";
                 tec.style.height = "1px";
                 tec.style.width = "1px";
-                ref.onclick = () => {
+                refresh.onclick = () => {
                     document.getElementById("frame").contentWindow.location.reload();
-                    ref.classList.add("rotate");
-                    setTimeout(function (){ref.classList.remove("rotate")}, 2500);
+                    refresh.classList.add("rotate");
+                    setTimeout(function () {
+                        refresh.classList.remove("rotate")
+                    }, 2500);
                 };
-                document.getElementById('number').innerText = termine ;
+                document.getElementById('number').innerText = termine;
                 printHighscore();
             }
 
