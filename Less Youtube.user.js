@@ -89,12 +89,13 @@
                 } catch (e) {
                 }
             }
-            let blurValue = Math.max(calculateTotalTimeSpent() - 1800000, 0)/1800000
+            let blurValue = Math.max(calculateTotalTimeSpent() - 900000, 0)/1800000
             for (let j = 0; j < document.querySelectorAll("#video-title").length; j++) {
                 document.querySelectorAll("#video-title")[j].style.filter = "blur(" + blurValue + "px)";
 
             }
-
+            let pageBlurValue = Math.max(calculateTotalTimeSpent() - 2700000, 0)/1800000
+            document.querySelectorAll("body")[0].style.filter = "blur(" + pageBlurValue + "px)";
         } else {
         }
 
