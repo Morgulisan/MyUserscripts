@@ -5,6 +5,7 @@
 // @description  In der Personalien Ansicht werden alle einträge mit einem Koppier knopf versehen nachdem Strg oder WindowsTaste gedrückt wurden
 // @author       Malte Kretzschmar
 // @match        https://vertrieb.tecis.de/betreuung/crm/hauptnavigation/*+kundendetails
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
 // @grant        none
 // ==/UserScript==
 (function() {
