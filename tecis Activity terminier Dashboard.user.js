@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Tecis Activity terminier Live Dashboard
+// @name         tecis Activity terminier Dashboard
 // @namespace    http://tampermonkey.net/
 // @version      0.5
 // @description  Ein Dashboard für Tecis-Veranstaltungen bei denen Termine gelegt werden

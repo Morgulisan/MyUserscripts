@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         Tecis Tis autologin
+// @name         tecis tIS autologin
 // @namespace    https://stay.app/
 // @version      0.1
-// @description  Beim ersten Aufruf des tis wird automatisch auf die Startseite weitergeleitet
-// @author       Malte
+// @description  Beim ersten Aufruf des tIS wird automatisch auf die Startseite weitergeleitet
+// @author       Malte Kretzschmar
 // @match        https://vertrieb.tecis.de:11059/pkmslogin.form
 // @grant        none
 // @run-at       document-start

@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Highlight in TopList
+// @name         tecis Highlight in TopList
 // @namespace    http://tampermonkey.net/
 // @version      0.3
 // @description  Highlights my team in the TopList Ranking with a background color
@@ -29,6 +29,8 @@
             {name: "753487 Jack Li", color: "rgb(156 118 222 / 50%)"},
 
             {name: "758298 Philipp Bronckhorst", color: "rgb(255 186 79)"},
+            {name: "751463 Thilo Urban", color: "rgb(255 186 79)"},
+            {name: "751063 Jakob Lecki", color: "rgb(255 186 79)"},
 
         ]
 

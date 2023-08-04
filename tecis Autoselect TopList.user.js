@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Autoselect TopList
+// @name         tecis Autoselect TopList
 // @namespace    http://tampermonkey.net/
 // @version      0.2
 // @description  Add Buttons to autoselect the correct Top-List

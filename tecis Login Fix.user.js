@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Tecis Async Login
+// @name         tecis Async Login
 // @namespace    http://tampermonkey.net/
 // @version      0.1
 // @description  Verhindert weiterleitungen auf komische Seiten nach dem login auf vertrieb.tecis.de
