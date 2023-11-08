@@ -1,10 +1,12 @@
 // ==UserScript==
-// @name         TeslaPasswordChange
+// @name         Tesla Password Change
 // @namespace    http://tampermonkey.net/
-// @version      0.2
+// @version      0.3
 // @description  Propose a  password when resetting a teslaaccount password
 // @author       Malte Kretzschmar
 // @match        https://auth.tesla.com/user/password/reset/*
+// @match        https://auth.tesla.com/en_us/user/password/reset/*
+// @match        https://auth.tesla.com/*/user/password/reset/*
 // @icon         https://www.google.com/s2/favicons?domain=tesla.com
 // @grant        none
 // ==/UserScript==
@@ -211,7 +213,11 @@
         return temp.toLowerCase();
     }
 
-    window.addEventListener("load",function (e) {
+    window.addEventListener("load", function() {
+        setTimeout(Autofill, 1200); // Delay of 2000ms (2 seconds).
+    });
+
+    function Autofill() {
         'use strict';
         let now = new Date();
         let start = new Date(now.getFullYear(), 0, 0);
@@ -223,15 +229,25 @@
         let hash = MD5(dayOfYear + salt + car);
         let abc = "abcdefghijklmnopqrstuvwxyzfoxcar";
         let pass = "fox" + hash.match(/\d/g)[0]
-        + hash.match(/\d/g)[1]
-        + hash.match(/\d/g)[2]
-        + abc[parseInt(Number("0x" + hash.substr(-2))) % (abc.length -1)]
-        + abc[parseInt(Number("0x" + hash.substr(-4, 2))) % (abc.length -1)]
-        + abc[parseInt(Number("0x" + hash.substr(-6, 2))) % (abc.length -1)];
+            + hash.match(/\d/g)[1]
+            + hash.match(/\d/g)[2]
+            + abc[parseInt(Number("0x" + hash.substr(-2))) % (abc.length -1)]
+            + abc[parseInt(Number("0x" + hash.substr(-4, 2))) % (abc.length -1)]
+            + abc[parseInt(Number("0x" + hash.substr(-6, 2))) % (abc.length -1)];
         document.querySelector('#container > div > p').innerHTML = "Neues Passwort (zum koppieren clicken): ";
         document.querySelector('#form-password > div:nth-child(1) > div > div').innerText = pass;
+
+        // Create a new 'change' event
+        var changeEvent = new Event('change');
+        var inputEvent = new Event('input', {
+            bubbles: true,
+            cancelable: true,
+        });
+
         document.querySelector('#new-password-input').value = pass;
         document.querySelector('#confirm-password-input').value = pass;
+        document.querySelector('#new-password-input').dispatchEvent(inputEvent);
+        document.querySelector('#confirm-password-input').dispatchEvent(inputEvent);
         document.querySelector('#confirm-password-input').click();
 
 
@@ -251,6 +267,6 @@
         document.querySelector('#form-password > div:nth-child(1) > div > div').onclick = () => {copyToClipboard(pass)};
         copyToClipboard(pass);
 
-    });
+    }
 })
 ();

@@ -35,5 +35,4 @@
         autofillEmail();
     });
 
-    // Your code here...
 })();
