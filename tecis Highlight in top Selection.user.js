@@ -20,6 +20,7 @@
             {name: "769267 Eike Kretzschmar", color: "rgb(96 179 252 / 50%)"},
             {name: "766151 Henning Benfer", color: "rgb(96 179 252 / 40%)"},
             {name: "755336 Berkant Dalmizirak", color: "rgb(96 179 252 / 50%)"},
+            {name: "749250 Thomas Schleiermacher", color: "rgb(96 179 252 / 50%)"},
 
             {name: "773658 Adrian Stefan Habersetzer", color: "rgb(67 204 84)"},
             {name: "757786 Jennifer Lübke", color: "rgb(67 204 84 / 50%)"},
