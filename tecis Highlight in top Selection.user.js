@@ -31,6 +31,7 @@
             {name: "758298 Philipp Bronckhorst", color: "rgb(255 186 79)"},
             {name: "751463 Thilo Urban", color: "rgb(255 186 79)"},
             {name: "751063 Jakob Lecki", color: "rgb(255 186 79)"},
+            {name: "749237 Paul Kubini", color: "rgb(255 186 79 / 50%)"},
 
         ]
 
