@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Malte Wiki - Local Checkbox
 // @namespace    http://tampermonkey.net/
-// @version      2024-02-22
+// @version      2024-02-23
 // @description  Enables local checkbox-states saved to local storage
 // @author       Malte Kretzschmar
 // @match        https://mopoliti.de/Wiki/*
@@ -15,7 +15,8 @@
 
 (function() {
     'use strict';
-// Function to set a value in localStorage or cookies
+
+    // Function to set a value in localStorage or cookies
     function setStorage(key, value) {
         if (window.localStorage) {
             localStorage.setItem(key, value);
@@ -24,7 +25,7 @@
         }
     }
 
-// Function to get a value from localStorage or cookies
+    // Function to get a value from localStorage or cookies
     function getStorage(key) {
         if (window.localStorage) {
             return localStorage.getItem(key);
@@ -40,17 +41,18 @@
         }
     }
 
-// Function to uniquely identify each checkbox
+    // Function to uniquely identify each checkbox using a data attribute
     function generateCheckboxId(index) {
         return `checkbox-${window.location.pathname}-${index}`;
     }
-// Function to encapsulate your checkbox logic for reuse
+
+    // Function to encapsulate your checkbox logic for reuse
     function handleCheckboxes() {
         const checkboxes = document.querySelectorAll('input[type=checkbox]');
         checkboxes.forEach((checkbox, index) => {
             checkbox.disabled = false; // Enable checkbox
-            const checkboxId = `checkbox-${window.location.pathname}-${index}`; // Adjusted for pathname
-            checkbox.id = checkboxId;
+            const checkboxId = generateCheckboxId(index); // Adjusted for pathname
+            checkbox.setAttribute('data-checkbox-id', checkboxId);
 
             const savedState = getStorage(checkboxId);
             if (savedState !== null) {
@@ -62,18 +64,18 @@
         });
     }
 
-// Function to handle checkbox change events
+    // Function to handle checkbox change events
     function handleCheckboxChange() {
-        const checkboxId = this.id; // 'this' refers to the checkbox
+        const checkboxId = this.getAttribute('data-checkbox-id'); // 'this' refers to the checkbox
         setStorage(checkboxId, this.checked);
     }
 
     handleCheckboxes();
 
-// Observe URL changes that happen through history API
+    // Observe URL changes that happen through history API
     (function(history){
-        var pushState = history.pushState;
-        var replaceState = history.replaceState;
+        let pushState = history.pushState;
+        let replaceState = history.replaceState;
 
         history.pushState = function(state) {
             if (typeof history.onpushstate == "function") {
