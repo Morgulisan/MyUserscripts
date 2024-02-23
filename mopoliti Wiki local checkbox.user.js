@@ -16,30 +16,49 @@
 (function() {
     'use strict';
 
-    // Function to set a value in localStorage or cookies
+    // Function to set a value in localStorage with a timestamp
     function setStorage(key, value) {
+        const expiration = new Date().getTime() + (10 * 24 * 60 * 60 * 1000); // 10 days in milliseconds
+        const item = {
+            value: value,
+            expiration: expiration
+        };
         if (window.localStorage) {
-            localStorage.setItem(key, value);
+            localStorage.setItem(key, JSON.stringify(item));
         } else {
-            document.cookie = `${encodeURIComponent(key)}=${encodeURIComponent(value)}; path=/; max-age=1236000`; // ca 2 Wochen
+            document.cookie = `${encodeURIComponent(key)}=${encodeURIComponent(JSON.stringify(item))}; path=/; max-age=864000`; // 10 days in seconds
         }
     }
 
-    // Function to get a value from localStorage or cookies
+    // Function to get a value from localStorage checking for expiration
     function getStorage(key) {
+        let item = null;
         if (window.localStorage) {
-            return localStorage.getItem(key);
+            item = localStorage.getItem(key);
         } else {
             const nameEQ = `${encodeURIComponent(key)}=`;
             const ca = document.cookie.split(';');
             for (let i = 0; i < ca.length; i++) {
                 let c = ca[i];
                 while (c.charAt(0) === ' ') c = c.substring(1, c.length);
-                if (c.indexOf(nameEQ) === 0) return decodeURIComponent(c.substring(nameEQ.length, c.length));
+                if (c.indexOf(nameEQ) === 0) item = decodeURIComponent(c.substring(nameEQ.length, c.length));
             }
-            return null;
         }
+        if (item) {
+            const data = JSON.parse(item);
+            const now = new Date().getTime();
+            if (now < data.expiration) {
+                return data.value; // Return the value if it hasn't expired
+            } else {
+                if (window.localStorage) {
+                    localStorage.removeItem(key); // Remove expired item from localStorage
+                }
+                // For cookies, we don't explicitly remove them here because they'll expire naturally
+            }
+        }
+        return null; // Return null if no item found or item has expired
     }
+
 
     // Function to uniquely identify each checkbox using a data attribute
     function generateCheckboxId(index) {
