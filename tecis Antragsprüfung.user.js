@@ -13,9 +13,9 @@
 (function() {
     'use strict';
 
-    let invest = ["Sparinvest", "JPMorgan Asset Management", "DWS Investment GmbH", "BlackRock", "AllianceBernstein", "Vontobel", "Pictet", "Comgest", "Schroder Investment", "Gutmann Kapitalanlageaktiengesellschaft", "Robeco"]; // column 6
+    let invest = ["Sparinvest", "JPMorgan Asset Management", "DWS Investment GmbH", "BlackRock", "AllianceBernstein", "Vontobel", "Pictet", "Comgest", "Schroder Investment", "Gutmann Kapitalanlageaktiengesellschaft", "Robeco", "Alger Sicav", "Amundi Asset Management (PLC)"]; // column 6
     let immo = ["DOMCURA AG",]; // column 6
-    let Tarif = ["Multidepot",]; // column 7
+    let Tarif = ["Multidepot", "FodB Depoteröffnung"]; // column 7
 
     function delay(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
