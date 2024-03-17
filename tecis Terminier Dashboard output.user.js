@@ -1,4 +1,3 @@
-const metadataBlock = `
 // ==UserScript==
 // @name         tecis TerminierDashboard
 // @namespace    http://tampermonkey.net/
@@ -9,112 +8,92 @@ const metadataBlock = `
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
-`;
 
 const loggedInUser = "775726";
-let AllTimeHigh= 168;
-
+let AllTimeHigh = 0;
 class Dash {
-    [key: string] : MitarbeiterRaw;
 }
 class MitarbeiterRaw {
-    positionsBezeichnung: "T" | "BA" | "JB" | "SB" | "TL" | "RL" | "BM" | "RM" | "DM" | "GM" | "SC" | "SSC" | "SM" | "SSM" | "GSM";
-    vorname: string;
-    name: string;
-    hvNr: number;
-    direkterVorgesetzter: number;
-    modus: "MA" | "FK";
-    summeAllerTermine: number;
-    summeAllerTermineOld?: number;
-    summeTerminartenNachArt: Terminlage;
-    summeTerminartenNachArtOld?: Terminlage;
-    summeTermineTeam?: Terminlage;
-    summeTermineTeamOld?: Terminlage;
 }
 class Terminlage {
-    "1"?: number;
-    "2"?: number;
-    "3"?: number;
-    "4"?: number;
-    "5"?: number;
-
-    sum(): number {
+    sum() {
         let total = 0;
         for (let key in this) {
             if (this.hasOwnProperty(key) && typeof this[key] === 'number') {
                 // @ts-ignore
-                total += this[key]!;
+                total += this[key];
             }
         }
         return total;
     }
 }
-enum TerminArt {
-    S1 = 1,
-    S2,
-    Service,
-    Recruiting,
-    S3
-}
-
-
+var TerminArt;
+(function (TerminArt) {
+    TerminArt[TerminArt["S1"] = 1] = "S1";
+    TerminArt[TerminArt["S2"] = 2] = "S2";
+    TerminArt[TerminArt["Service"] = 3] = "Service";
+    TerminArt[TerminArt["Recruiting"] = 4] = "Recruiting";
+    TerminArt[TerminArt["S3"] = 5] = "S3";
+})(TerminArt || (TerminArt = {}));
 (function () {
     'use strict';
-
     console.log(localStorage.getItem("message"));
-
-    let Dashboard : Dash = {};
-    let mvp = { t : 0, name: ""};
-
-    async function fetchJSON(url: string): Promise<any> {
+    let Dashboard = {};
+    let mvp = { t: 0, name: "" };
+    async function fetchJSON(url) {
         const response = await fetch(url);
         if (!response.ok) {
             throw new Error(`HTTP error! Status: ${response.status}`);
         }
         return await response.json();
     }
-
     async function terminAbrufen(vpNr, setup = false) {
         try {
-            const data: [MitarbeiterRaw] = await fetchJSON('https://vertrieb.tecis.de/api/hierarchie/,DanaInfo=.acsoBehzp3r39Kso78rvxTv.AEYGL-JKECAAhQDLFEWpIK,dom=1,CT=sxml+teamterminarten?hvNr=' + vpNr);
+            const data = await fetchJSON('https://vertrieb.tecis.de/api/hierarchie/,DanaInfo=.acsoBehzp3r39Kso78rvxTv.AEYGL-JKECAAhQDLFEWpIK,dom=1,CT=sxml+teamterminarten?hvNr=' + vpNr);
             for (let ma of data) {
                 if (ma.modus === "MA") {
                     if (setup) {
                         Dashboard[ma.hvNr + "X"] = ma;
                         Dashboard[ma.hvNr + "X"].summeTerminartenNachArtOld = ma.summeTerminartenNachArt;
                         Dashboard[ma.hvNr + "X"].summeAllerTermineOld = ma.summeAllerTermine;
-                    } else Dashboard[ma.hvNr + "X"].summeTerminartenNachArt = ma.summeTerminartenNachArt;
+                    }
+                    else
+                        Dashboard[ma.hvNr + "X"].summeTerminartenNachArt = ma.summeTerminartenNachArt;
                     Dashboard[ma.hvNr + "X"].summeAllerTermine = ma.summeAllerTermine;
-                    if(mvp.t < ma.summeAllerTermine){
+                    if (mvp.t < ma.summeAllerTermine) {
                         mvp.t = ma.summeAllerTermine;
                         mvp.name = ma.vorname + " " + ma.name;
                     }
-                } else if (ma.modus === "FK") {
+                }
+                else if (ma.modus === "FK") {
                     if (!setup) {
                         Dashboard[ma.hvNr + "X"].summeTermineTeam = ma.summeTerminartenNachArt;
                     }
                     terminAbrufen(ma.hvNr, setup);
                 }
             }
-        } catch (error) {
+        }
+        catch (error) {
             console.error('Failed to fetch JSON:', error);
         }
-
         localStorage.setItem('message', JSON.stringify(Dashboard));
     }
-
-    function anzahlTermineBerechnen(): number {
-        let total: number = 0;
-        let totalByType: Terminlage = Object.assign(new Terminlage(), {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0});
+    function anzahlTermineBerechnen() {
+        let total = 0;
+        let totalByType = Object.assign(new Terminlage(), { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 });
         for (let ma in Dashboard) {
             total += Dashboard[ma].summeAllerTermine;
-            if (Dashboard[ma].summeTerminartenNachArt.hasOwnProperty("1")) totalByType["1"] += Dashboard[ma].summeTerminartenNachArt["1"];
-            if (Dashboard[ma].summeTerminartenNachArt.hasOwnProperty("2")) totalByType["2"] += Dashboard[ma].summeTerminartenNachArt["2"];
-            if (Dashboard[ma].summeTerminartenNachArt.hasOwnProperty("3")) totalByType["3"] += Dashboard[ma].summeTerminartenNachArt["3"];
-            if (Dashboard[ma].summeTerminartenNachArt.hasOwnProperty("4")) totalByType["4"] += Dashboard[ma].summeTerminartenNachArt["4"];
-            if (Dashboard[ma].summeTerminartenNachArt.hasOwnProperty("5")) totalByType["5"] += Dashboard[ma].summeTerminartenNachArt["5"];
+            if (Dashboard[ma].summeTerminartenNachArt.hasOwnProperty("1"))
+                totalByType["1"] += Dashboard[ma].summeTerminartenNachArt["1"];
+            if (Dashboard[ma].summeTerminartenNachArt.hasOwnProperty("2"))
+                totalByType["2"] += Dashboard[ma].summeTerminartenNachArt["2"];
+            if (Dashboard[ma].summeTerminartenNachArt.hasOwnProperty("3"))
+                totalByType["3"] += Dashboard[ma].summeTerminartenNachArt["3"];
+            if (Dashboard[ma].summeTerminartenNachArt.hasOwnProperty("4"))
+                totalByType["4"] += Dashboard[ma].summeTerminartenNachArt["4"];
+            if (Dashboard[ma].summeTerminartenNachArt.hasOwnProperty("5"))
+                totalByType["5"] += Dashboard[ma].summeTerminartenNachArt["5"];
         }
-
         document.getElementById("Termine").innerText = total.toString();
         document.getElementById("S1").innerText = totalByType["1"].toString();
         document.getElementById("S2").innerText = totalByType["2"].toString();
@@ -124,11 +103,10 @@ enum TerminArt {
         document.getElementById("ATH").innerText = Math.max(total, AllTimeHigh).toString(); //All-Time-Height
         document.getElementById("MVPT").innerText = mvp.t.toString(); //Termine des MVP
         document.getElementById("MVPN").innerText = mvp.name; //Name des MVP
-
-        const sortedArray : MitarbeiterRaw[] = Object.values(Dashboard).sort((a, b) => b.summeAllerTermine - a.summeAllerTermine);
+        const sortedArray = Object.values(Dashboard).sort((a, b) => b.summeAllerTermine - a.summeAllerTermine);
         for (let i = 0; i < 10; i++) {
             let listElement = document.getElementById("list").getElementsByClassName("lelem")[i];
-            listElement.innerHTML =`<div style="    font-family: Calibri, Helvetica, Arial, sans-serif;
+            listElement.innerHTML = `<div style="    font-family: Calibri, Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     text-rendering: geometricPrecision;
     color: #1b6694 !important;
@@ -141,40 +119,37 @@ enum TerminArt {
     font-size: 20Px;">
                 <div style="
     width: 155px;
-"><p>`+ sortedArray[i].vorname + " "+  sortedArray[i].name +`</p>
+"><p>` + sortedArray[i].vorname + " " + sortedArray[i].name + `</p>
                 </div>
                 <div>` +
-                (sortedArray[i].summeTerminartenNachArt["1"] ?  sortedArray[i].summeTerminartenNachArt["1"] : 0) + `
+                (sortedArray[i].summeTerminartenNachArt["1"] ? sortedArray[i].summeTerminartenNachArt["1"] : 0) + `
                 </div>
                 <div>
-                `+(sortedArray[i].summeTerminartenNachArt["2"] ? sortedArray[i].summeTerminartenNachArt["2"] : 0) + `
+                ` + (sortedArray[i].summeTerminartenNachArt["2"] ? sortedArray[i].summeTerminartenNachArt["2"] : 0) + `
                 </div>
                 <div>
-                `+(sortedArray[i].summeTerminartenNachArt["5"]  ? sortedArray[i].summeTerminartenNachArt["5"] : 0) + `
+                ` + (sortedArray[i].summeTerminartenNachArt["5"] ? sortedArray[i].summeTerminartenNachArt["5"] : 0) + `
                 </div>
                 <div>
-                `+(sortedArray[i].summeTerminartenNachArt["3"] ? sortedArray[i].summeTerminartenNachArt["3"] : 0)+ `
+                ` + (sortedArray[i].summeTerminartenNachArt["3"] ? sortedArray[i].summeTerminartenNachArt["3"] : 0) + `
                 </div>
                 <div>
-                `+(sortedArray[i].summeTerminartenNachArt["4"] ? sortedArray[i].summeTerminartenNachArt["4"] : 0)+ `
+                ` + (sortedArray[i].summeTerminartenNachArt["4"] ? sortedArray[i].summeTerminartenNachArt["4"] : 0) + `
                 </div>
                 <div style="
     width: 100px;
 "><p>` + sortedArray[i].summeAllerTermine + `</p></div>
-            </div>`
+            </div>`;
         }
         return total;
     }
-
     terminAbrufen(loggedInUser, true);
-
     setInterval(() => {
-        terminAbrufen(loggedInUser)
+        terminAbrufen(loggedInUser);
     }, Math.max(Object.keys(Dashboard).length * 200, 10000));
     setInterval(() => {
-        anzahlTermineBerechnen()
+        anzahlTermineBerechnen();
     }, 5000);
-
     document.addEventListener('keydown', (event) => {
         if (event.key === 'A' || event.key === 'a') {
             const newValue = prompt('Please enter the new All-Time High value:');
@@ -183,13 +158,12 @@ enum TerminArt {
                 // Assuming AllTimeHigh is meant to be a global variable, change its declaration from const to let at its initial definition
                 AllTimeHigh = parsedValue;
                 document.getElementById('ATH').innerText = AllTimeHigh.toString();
-            } else {
+            }
+            else {
                 alert('Please enter a valid number.');
             }
         }
     });
-
-
     document.body.innerHTML = `<style>
     * {
         font-family: Calibri, Helvetica, Arial, sans-serif;
@@ -513,27 +487,22 @@ enum TerminArt {
 
 
 `;
-
     const requestWakeLock = async () => {
         try {
             // @ts-ignore
             const wakeLock = await navigator.wakeLock.request("screen");
-        } catch (err) {
+        }
+        catch (err) {
             // The wake lock request fails - usually system-related, such as low battery.
-
             console.log(`${err.name}, ${err.message}`);
         }
     };
-
     requestWakeLock();
-
     document.getElementById("date").innerText = new Date().toLocaleDateString('de-DE');
-
     fetch("https://vertrieb.tecis.de/,DanaInfo=.acsoBehzp3r39Kso78rvxTv.AEYGL-JKECAAhQDLFEWpIK+api/teamterminarten?betreuerNr=775726").then(a => {
-        console.log(a.json())
+        console.log(a.json());
     });
     fetch('https://vertrieb.tecis.de/,DanaInfo=.acsoBehzp3r39Kso78rvxTv.AEYGL-JKECAAhQDLFEWpIK+api/teamterminarten?betreuerNr=775726')
         .then(response => response.text())
-        .then(text => console.log(text))
-
+        .then(text => console.log(text));
 })();
