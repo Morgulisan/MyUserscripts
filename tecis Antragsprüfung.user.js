@@ -22,6 +22,8 @@
     }
 
     async function fill(){
+
+        document.getElementById("fillButton").innerHTML = "Investment geprüft &circlearrowright;";
         let a = document.getElementsByClassName("rich-table-row");
 
         for (let i = 0; i < a.length; i++) {
@@ -35,6 +37,8 @@
                 i--;
             }
         }
+
+        document.getElementById("fillButton").innerHTML = "Investment geprüft &check;";
     }
 
     console.log("Running");
