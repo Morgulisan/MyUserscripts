@@ -11,8 +11,9 @@ const metadataBlock = `
 // ==/UserScript==
 `;
 
-const loggedInUser = "775726";
-let AllTimeHigh= 168;
+let loggedInUser = "775726";
+let allTimeHigh= 168;
+let daysInFuture : number = 28;
 
 class Dash {
     [key: string] : MitarbeiterRaw;
@@ -51,10 +52,10 @@ class Terminlage {
 }
 enum TerminArt {
     S1 = 1,
-    S2,
-    Service,
-    Recruiting,
-    S3
+    S2 = 2,
+    Service = 3,
+    Recruiting = 4,
+    S3 = 5
 }
 
 
@@ -99,7 +100,6 @@ enum TerminArt {
         } catch (error) {
             console.error('Failed to fetch JSON:', error);
         }
-
         localStorage.setItem('message', JSON.stringify(Dashboard));
     }
 
@@ -121,13 +121,13 @@ enum TerminArt {
         document.getElementById("S3").innerText = totalByType["5"].toString();
         document.getElementById("Service").innerText = totalByType["3"].toString();
         document.getElementById("Rec").innerText = totalByType["4"].toString();
-        document.getElementById("ATH").innerText = Math.max(total, AllTimeHigh).toString(); //All-Time-Height
+        document.getElementById("ATH").innerText = Math.max(total, allTimeHigh).toString(); //All-Time-Height
         document.getElementById("MVPT").innerText = mvp.t.toString(); //Termine des MVP
         document.getElementById("MVPN").innerText = mvp.name; //Name des MVP
 
         const sortedArray : MitarbeiterRaw[] = Object.values(Dashboard).sort((a, b) => b.summeAllerTermine - a.summeAllerTermine);
         for (let i = 0; i < 10; i++) {
-            let listElement = document.getElementById("list").getElementsByClassName("lelem")[i];
+            let listElement = document.getElementById("list").getElementsByClassName("listElement")[i];
             listElement.innerHTML =`<div style="    font-family: Calibri, Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     text-rendering: geometricPrecision;
@@ -166,6 +166,24 @@ enum TerminArt {
         return total;
     }
 
+    function isInNext4Weeks(dateStr, withinXDays = daysInFuture) : boolean {
+        // Parse the date string
+        const parts = dateStr.split(".");
+        const day = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1; // JavaScripts months are 0-based
+        const year = parseInt(parts[2], 10);
+        const date = new Date(year, month, day);
+
+        // Get current date and 4 weeks later date
+        const currentDate = new Date();
+        currentDate.setHours(0, 0, 0, 0); // Remove time part
+        const fourWeeksLater = new Date();
+        fourWeeksLater.setDate(currentDate.getDate() + withinXDays); // Add 4 weeks
+        // Check if the date is within the next 4 weeks
+        return date >= currentDate && date <= fourWeeksLater;
+    }
+
+
     terminAbrufen(loggedInUser, true);
 
     setInterval(() => {
@@ -180,9 +198,25 @@ enum TerminArt {
             const newValue = prompt('Please enter the new All-Time High value:');
             const parsedValue = parseInt(newValue, 10);
             if (!isNaN(parsedValue)) {
-                // Assuming AllTimeHigh is meant to be a global variable, change its declaration from const to let at its initial definition
-                AllTimeHigh = parsedValue;
-                document.getElementById('ATH').innerText = AllTimeHigh.toString();
+                allTimeHigh = parsedValue;
+                document.getElementById('ATH').innerText = allTimeHigh.toString();
+            } else {
+                alert('Please enter a valid number.');
+            }
+        }
+        if (event.key === 'Z' || event.key === 'z') {
+            const newValue = prompt('Wie viele Tage in der Zukunft darf der Termin liegen?');
+            const parsedValue = parseInt(newValue, 10);
+            if (!isNaN(parsedValue)) {
+                daysInFuture = parsedValue;
+            } else {
+                alert('Please enter a valid number.');
+            }
+        }
+        if (event.key === 'T' || event.key === 't') {
+            const newValue = prompt('Please enter the new Team VP-Nr.:');
+            if (newValue.length > 4 ) {
+                loggedInUser = newValue;
             } else {
                 alert('Please enter a valid number.');
             }
@@ -326,14 +360,29 @@ enum TerminArt {
         height: 50px;
         margin: 5px;
     }
+    .headerBox{
+        box-shadow: 0 0 8px 0 rgba(0,0,0,.25);
+        position: sticky;
+        z-index: 200;
+        top: 0;
+        background-color: #fff;
+    }
+    
+    .sldo-cl-c-page-heading__headline{
+        font-weight: 700;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        margin-top: .25rem;
+        overflow: hidden;
+        line-height: 1.25em;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 16px;
+        -webkit-line-clamp: 1;
+    }
+    
 </style>
-<header class="sldo-cl-c-page-heading common-styles" style="
-    box-shadow: 0 0 8px 0 rgba(0,0,0,.25);
-    position: sticky;
-    z-index: 200;
-    top: 0;
-    background-color: #fff;
-">
+<header class="sldo-cl-c-page-heading common-styles headerBox">
     <div class="sldo-cl-c-page-heading__inner common-styles" style="
     display: flex;
     flex-direction: row;
@@ -345,18 +394,7 @@ enum TerminArt {
     flex: 0 1 100%;
     margin-left: 24px;
 ">
-            <div class="sldo-cl-c-page-heading__headline common-styles" style="
-    font-weight: 700;
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    margin-top: .25rem;
-    overflow: hidden;
-    line-height: 1.25em;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 16px;
-    -webkit-line-clamp: 1;
-">Gemeinsames Terminieren am <span id="date">?</span></div>
+            <div class="sldo-cl-c-page-heading__headline common-styles">Gemeinsames Terminieren am <span id="date">?</span></div>
         </div>
     </div>
 </header>
@@ -460,53 +498,37 @@ enum TerminArt {
     justify-content: space-between !important;
     text-align: center !important;
     font-size: 20Px;">
-                <div  style="
-    width: 155px;
-"><p>Termine</p>
+                <div  style="width: 155px;"><p>Termine</p></div>
+                <div>
+                    <div class="smallColoredBubble" style="ackground-color: rgb(0, 67, 110);color: rgb(61, 61, 61);"> S1 </div>
                 </div>
                 <div>
-                    <div class="smallColoredBubble" style="
-    background-color: rgb(0, 67, 110);
-    color: rgb(61, 61, 61);
-    "> S1
-                    </div>
-
+                    <div class="smallColoredBubble" style="background-color: rgba(0, 67, 110, 0.6); color: rgb(61, 61, 61);"> S2 </div>
                 </div>
                 <div>
-                    <div class="smallColoredBubble" style="background-color: rgba(0, 67, 110, 0.6); color: rgb(61, 61, 61);"> S2
-                    </div>
-
+                    <div class="smallColoredBubble" style="background-color: rgba(0, 67, 110, 0.2); color: rgb(61, 61, 61);"> S3 </div>
                 </div>
                 <div>
-                    <div class="smallColoredBubble" style="background-color: rgba(0, 67, 110, 0.2); color: rgb(61, 61, 61);"> S3
-                    </div>
-
+                    <div class="smallColoredBubble" style="background-color: rgb(236, 112, 0); color: rgb(61, 61, 61);"> SV </div>
                 </div>
                 <div>
-                    <div class="smallColoredBubble" style="background-color: rgb(236, 112, 0); color: rgb(61, 61, 61);"> SV
-                    </div>
-
-                </div>
-                <div>
-                    <div class="smallColoredBubble" style="background-color: rgb(255, 207, 0); color: rgb(61, 61, 61);"> RC
-                    </div>
-
+                    <div class="smallColoredBubble" style="background-color: rgb(255, 207, 0); color: rgb(61, 61, 61);"> RC </div>
                 </div>
                 <div style="
     width: 100px;
 "><p>&sum;</p></div>
             </div>
             </div>
-                <div class="lelem"></div>
-                <div class="lelem"></div>
-                <div class="lelem"></div>
-                <div class="lelem"></div>
-                <div class="lelem"></div>
-                <div class="lelem"></div>
-                <div class="lelem"></div>
-                <div class="lelem"></div>
-                <div class="lelem"></div>
-                <div class="lelem"></div>
+                <div class="listElement"></div>
+                <div class="listElement"></div>
+                <div class="listElement"></div>
+                <div class="listElement"></div>
+                <div class="listElement"></div>
+                <div class="listElement"></div>
+                <div class="listElement"></div>
+                <div class="listElement"></div>
+                <div class="listElement"></div>
+                <div class="listElement"></div>
         </div>
     </div>
 </div>
@@ -529,10 +551,10 @@ enum TerminArt {
 
     document.getElementById("date").innerText = new Date().toLocaleDateString('de-DE');
 
-    fetch("https://vertrieb.tecis.de/,DanaInfo=.acsoBehzp3r39Kso78rvxTv.AEYGL-JKECAAhQDLFEWpIK+api/teamterminarten?betreuerNr=775726").then(a => {
+    fetch("https://www.crm.vertrieb-plattform.de/activity/api/hierarchie/teamterminarten?hvNr=775726").then(a => {
         console.log(a.json())
     });
-    fetch('https://vertrieb.tecis.de/,DanaInfo=.acsoBehzp3r39Kso78rvxTv.AEYGL-JKECAAhQDLFEWpIK+api/teamterminarten?betreuerNr=775726')
+    fetch('https://www.crm.vertrieb-plattform.de/activity/api/hierarchie/teamterminarten?hvNr=775726')
         .then(response => response.text())
         .then(text => console.log(text))
 
