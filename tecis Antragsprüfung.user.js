@@ -6,6 +6,7 @@
 // @author       Malte Kretzschmar
 // @match        https://vertrieb.tecis.de:11059/ka/kapruefung/antragpruefung.faces
 // @match        https://vertrieb.tecis.de:11059/ka/kapruefung/start.faces
+// @match        https://antragspruefung.slotbasis.crm.vertrieb-plattform.de/kapruefung/start.faces
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
 // @grant        none
 // ==/UserScript==
@@ -13,17 +14,15 @@
 (function() {
     'use strict';
 
-    let invest = ["Sparinvest", "JPMorgan Asset Management", "DWS Investment GmbH", "BlackRock", "AllianceBernstein", "Vontobel", "Pictet", "Comgest", "Schroder Investment", "Gutmann Kapitalanlageaktiengesellschaft", "Robeco", "Alger Sicav", "Amundi Asset Management (PLC)"]; // column 6
-    let immo = ["DOMCURA AG",]; // column 6
-    let Tarif = ["Multidepot", "FodB Depoteröffnung"]; // column 7
+    let invest = ["Universal Investment Gesellschaft mbH","Sarasin Wertpapierhandelsbank AG","Amundi Asset Management (PLC)","Sparinvest", "JPMorgan Asset Management", "DWS Investment GmbH", "BlackRock", "AllianceBernstein", "Vontobel", "Pictet", "Comgest", "Schroder Investment", "Gutmann Kapitalanlageaktiengesellschaft", "Robeco"]; // column 6
+    let immo = ["DOMCURA AG","Domicil Objekt GmbH & Co. KG"]; // column 6
+    let Tarif = ["Multidepot",]; // column 7
 
     function delay(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     async function fill(){
-
-        document.getElementById("fillButton").innerHTML = "Investment geprüft &circlearrowright;";
         let a = document.getElementsByClassName("rich-table-row");
 
         for (let i = 0; i < a.length; i++) {
@@ -37,8 +36,6 @@
                 i--;
             }
         }
-
-        document.getElementById("fillButton").innerHTML = "Investment geprüft &check;";
     }
 
     console.log("Running");

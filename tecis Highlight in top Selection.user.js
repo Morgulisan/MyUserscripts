@@ -6,6 +6,8 @@
 // @author       Malte Kretzschmar
 // @match        https://vertrieb.tecis.de:11059/gr/reporting/ur/topvp.do
 // @match        https://vertrieb.tecis.de:11059/gr/reporting/top/topanmeldungen.do
+// @match        https://reporting.slotbasis.crm.vertrieb-plattform.de/reporting/ur/topvp.do
+// @match        https://reporting.slotbasis.crm.vertrieb-plattform.de/reporting/top/topanmeldungen.do
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
 // @grant        none
 // ==/UserScript==
@@ -33,6 +35,10 @@
             {name: "751463 Thilo Urban", color: "rgb(255 186 79)"},
             {name: "751063 Jakob Lecki", color: "rgb(255 186 79)"},
             {name: "749237 Paul Kubini", color: "rgb(255 186 79 / 50%)"},
+            {name: "751295 Daniel Markovic", color: "rgb(255 186 79 / 50%)"},
+            {name: "754826 Jakob Kremers", color: "rgb(255 186 79)"},
+
+
 
         ]
 

@@ -5,6 +5,7 @@
 // @description  Add Buttons to autoselect the correct Top-List
 // @author       Malte Kretzschmar
 // @match        https://vertrieb.tecis.de:11059/gr/reporting/ur/home.do
+// @match        https://reporting.slotbasis.crm.vertrieb-plattform.de/reporting/ur/home.do
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
 // @grant        none
 // ==/UserScript==
