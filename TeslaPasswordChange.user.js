@@ -233,7 +233,7 @@
             + hash.match(/\d/g)[2]
             + abc[parseInt(Number("0x" + hash.substr(-2))) % (abc.length -1)]
             + abc[parseInt(Number("0x" + hash.substr(-4, 2))) % (abc.length -1)]
-            + abc[parseInt(Number("0x" + hash.substr(-6, 2))) % (abc.length -1)];
+            + abc[parseInt(Number("0x" + hash.substr(-6, 2))) % (abc.length -1)] + "!";
         document.querySelector('#container > div > p').innerHTML = "Neues Passwort (zum koppieren clicken): ";
         document.querySelector('#form-password > div:nth-child(1) > div > div').innerText = pass;
 
