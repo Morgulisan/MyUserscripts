@@ -14,7 +14,7 @@
 (function() {
     'use strict';
 
-    let invest = ["CARMIGNAC GESTION","Universal Investment Gesellschaft mbH","Sarasin Wertpapierhandelsbank AG","Amundi Asset Management (PLC)","Sparinvest", "JPMorgan Asset Management", "DWS Investment GmbH", "BlackRock", "AllianceBernstein", "Vontobel", "Pictet", "Comgest", "Schroder Investment", "Gutmann Kapitalanlageaktiengesellschaft", "Robeco", "Flossbach von Storch Invest S.A", "FundRock Management Company S.A.", "iShares - BlackRock (Public Limited)", "ODDO BHF Asset Management GmbH","Nordea Fonds Service GmbH"]; // column 6
+    let invest = ["Swisscanto Asset Management AG","AllianceBernstein","CARMIGNAC GESTION","Universal Investment Gesellschaft mbH","Sarasin Wertpapierhandelsbank AG","Amundi Asset Management (PLC)","Sparinvest", "JPMorgan Asset Management", "DWS Investment GmbH", "BlackRock", "AllianceBernstein", "Vontobel", "Pictet", "Comgest", "Schroder Investment", "Gutmann Kapitalanlageaktiengesellschaft", "Robeco", "Flossbach von Storch Invest S.A", "FundRock Management Company S.A.", "iShares - BlackRock (Public Limited)", "ODDO BHF Asset Management GmbH","Nordea Fonds Service GmbH"]; // column 6
     let immo = ["DOMCURA AG","Domicil Objekt GmbH & Co. KG"]; // column 6
     let Tarif = ["Multidepot","FodB Depoteröffnung", "Depot", "Gesetzliche Krankenversicherung"]; // column 7
 

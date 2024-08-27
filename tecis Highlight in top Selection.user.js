@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         tecis Highlight in TopList
 // @namespace    http://tampermonkey.net/
-// @version      0.3
+// @version      0.4
 // @description  Highlights my team in the TopList Ranking with a background color
 // @author       Malte Kretzschmar
 // @match        https://vertrieb.tecis.de:11059/gr/reporting/ur/topvp.do
@@ -20,9 +20,11 @@
 
             {name: "774992 Fynn Kretzschmar", color: "#60b3fc"},
             {name: "769267 Eike Kretzschmar", color: "rgb(96 179 252 / 50%)"},
-            {name: "766151 Henning Benfer", color: "rgb(96 179 252 / 40%)"},
+            {name: "766151 Henning Benfer", color: "rgb(96 179 252 / 50%)"},
             {name: "755336 Berkant Dalmizirak", color: "rgb(96 179 252 / 50%)"},
             {name: "749250 Thomas Schleiermacher", color: "rgb(96 179 252 / 50%)"},
+            {name: "746442 Daniel Konrad", color: "rgb(96 179 252 / 50%)"},
+            {name: "745815 Julius Tutu", color: "rgb(96 179 252 / 50%)"},
 
             {name: "773658 Adrian Stefan Habersetzer", color: "rgb(67 204 84)"},
             {name: "757786 Jennifer Lübke", color: "rgb(67 204 84 / 50%)"},
