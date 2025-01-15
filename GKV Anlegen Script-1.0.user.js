@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GKV hkk Anlegen Script
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @description  hkk GKV Anlegen
 // @author       Malte Kretzschmar
 // @match        https://bm.bp.vertrieb-plattform.de/bm/*
@@ -9,6 +9,7 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @require      https://cdn.jsdelivr.net/npm/pdf-lib/dist/pdf-lib.min.js
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
 // ==/UserScript==
 
 (async function() {
