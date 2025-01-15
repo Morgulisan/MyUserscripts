@@ -232,7 +232,7 @@
                         const parsedData = JSON.parse(GM_getValue("data", null));
                         if(parsedData) {
 
-                            const Name = parsedData.Vorname || "";
+                            const VName = parsedData.Vorname || "";
                             const Nachname = parsedData.Nachname || "";
                             const Strasse = parsedData["Straße / Nr."] || "";
                             const PLZ = parsedData["PLZ / Ort"] ? parsedData["PLZ / Ort"].slice(0, 5) : "";
@@ -241,7 +241,7 @@
                             const Geburtsdatum = parsedData.Geburtstag || "";
                             const Geburtsland = parsedData.Geburtsland || "";
                             const Familienstand = parsedData.Familienstand || "";
-                            const Staatsangehoerigkeit = parsedData.Staatsangehörigkeit || "";
+                            const staats = parsedData.Staatsangehörigkeit || "";
                             const Arbeitgeber = parsedData.Arbeitgeber || "";
                             const AusgeuebteTaetigkeit = parsedData["Ausgeübte Tätigkeit"] || "";
 
@@ -275,40 +275,37 @@
                             nameField.setText(Nachname);
 
                             const vorn = form.getTextField('Vorname');
-                            vorn.setText(Name);
+                            vorn.setText(VName);
 
                             const Str = form.getTextField('Straße, Hausnr');
-                            vorn.setText(Strasse);
+                            Str.setText(Strasse);
 
                             const plz = form.getTextField('PLZ');
-                            vorn.setText(PLZ);
+                            plz.setText(PLZ);
 
                             const wo = form.getTextField('Wohnort');
-                            vorn.setText(Ort);
+                            wo.setText(Ort);
 
                             const go = form.getTextField('Geburtsort');
-                            vorn.setText(Geburtsort);
+                            go.setText(Geburtsort);
 
                             const gl = form.getTextField('Geburtsland');
-                            vorn.setText(Geburtsland);
+                            gl.setText(Geburtsland);
 
                             const gd = form.getTextField('Geburtsdatum');
-                            vorn.setText(Geburtsdatum);
+                            gd.setText(Geburtsdatum);
 
                             const fz = form.getTextField('Familienstand');
-                            vorn.setText(Familienstand);
+                            fz.setText(Familienstand);
 
                             const sv = form.getTextField('RV-Nr');
-                            vorn.setText(Sozialversicherungsnummer);
+                            sv.setText(Sozialversicherungsnummer);
 
                             const ag = form.getTextField('Name Arbeitgeber');
-                            vorn.setText(Arbeitgeber);
+                            ag.setText(Arbeitgeber);
 
                             const at = form.getTextField('als');
-                            vorn.setText(AusgeuebteTaetigkeit);
-
-                            const sa = form.getTextField('Staatsangehörigkeit');
-                            vorn.setText(Staatsangehörigkeit);
+                            at.setText(AusgeuebteTaetigkeit);
 
 
 
@@ -317,6 +314,7 @@
 
                             // Convert the updated PDF bytes back to a Blob
                             pdfBlob = new Blob([newPdfBytes], {type: 'application/pdf'});
+                            console.log("Filled all fields");
                         }
                     } catch (err) {
                         console.warn("PDFLib form-fill step failed. Uploading original PDF without fields filled.", err);
