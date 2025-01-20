@@ -308,6 +308,9 @@
                             const at = form.getTextField('als');
                             at.setText(AusgeuebteTaetigkeit);
 
+                            const sa = form.getTextField('Staatsangehörigkeit');
+                            sa.setText(staats);
+
 
 
                             // Save the updated PDF
