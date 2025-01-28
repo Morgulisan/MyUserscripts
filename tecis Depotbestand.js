@@ -5,6 +5,7 @@
 // @description  Depotbestand Logging
 // @author       Malte
 // @match        https://tecis.bp.fundsaccess.eu/fpt/tecis/newsBpMysql.do?method=view*
+// @match        https://tecis.bp.fundsaccess.eu/*/login?*
 // @match        https://tecis.bp.fundsaccess.eu/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
 // @grant        GM_setValue
@@ -70,17 +71,20 @@
      * Scenario 2: We are on the page that shows the user ID:
      * URL: https://tecis.bp.fundsaccess.eu/#/fpt
      */
-    else if (currentURL.includes("https://tecis.bp.fundsaccess.eu/#/fpt")) {
+    else if (currentURL.includes("https://tecis.bp.fundsaccess.eu/#/fpt") || currentURL.includes("https://tecis.bp.fundsaccess.eu/#/login")) {
         const userElem = document.querySelector("body > app > header > div.login-info.visible-mdGt > span > a");
         const rawUserText = userElem?.innerText.trim() || "";
         // "Benutzer: 775726" => "775726"
         const userId = rawUserText.replace("Benutzer:", "").trim();
+        if(userId.length >= 5 && userId.length <= 7){
 
-        // TODO: Save to GM
-        GM_setValue("userId", {
-            value: userId,
-            timestamp: Date.now()
-        });
+            // TODO: Save to GM
+            GM_setValue("userId", {
+                value: userId,
+                timestamp: Date.now()
+            });
+
+        }
     }
 
     /**
