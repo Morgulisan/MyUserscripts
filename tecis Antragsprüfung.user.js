@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         tecis Antragsprüfung
 // @namespace    http://tampermonkey.net/
-// @version      2024-03-13
+// @version      2025-02-19
 // @description  Markiert alle Umsatzsteuerpflichtigen Umsätze als geprüft.
 // @author       Malte Kretzschmar
 // @match        https://vertrieb.tecis.de:11059/ka/kapruefung/antragpruefung.faces
@@ -14,7 +14,7 @@
 (function() {
     'use strict';
 
-    let invest = ["Swisscanto Asset Management AG","AllianceBernstein","CARMIGNAC GESTION","Universal Investment Gesellschaft mbH","Sarasin Wertpapierhandelsbank AG","Amundi Asset Management (PLC)","Sparinvest", "JPMorgan Asset Management", "DWS Investment GmbH", "BlackRock", "AllianceBernstein", "Vontobel", "Pictet", "Comgest", "Schroder Investment", "Gutmann Kapitalanlageaktiengesellschaft", "Robeco", "Flossbach von Storch Invest S.A", "FundRock Management Company S.A.", "iShares - BlackRock (Public Limited)", "ODDO BHF Asset Management GmbH","Nordea Fonds Service GmbH"]; // column 6
+    let invest = ["Swisscanto Asset Management AG","AllianceBernstein","CARMIGNAC GESTION","Universal Investment Gesellschaft mbH","Sarasin Wertpapierhandelsbank AG","Amundi Asset Management (PLC)","Sparinvest", "JPMorgan Asset Management", "DWS Investment GmbH", "BlackRock", "AllianceBernstein", "Vontobel", "Pictet", "Comgest", "Schroder Investment", "Gutmann Kapitalanlageaktiengesellschaft", "Robeco", "Flossbach von Storch Invest S.A", "FundRock Management Company S.A.", "iShares - BlackRock (Public Limited)", "ODDO BHF Asset Management GmbH","Nordea Fonds Service GmbH", "BNY Mellon Global Inv.", "Alter Domus Management Company S.A.", "Swisscanto Asset Management AG", "Swiss Life Fund Management (LUX) S.A.", "Frankfurt-Trust Invest Luxemburg AG"]; // column 6
     let immo = ["DOMCURA AG","Domicil Objekt GmbH & Co. KG"]; // column 6
     let Tarif = ["Multidepot","FodB Depoteröffnung", "Depot", "Gesetzliche Krankenversicherung"]; // column 7
 
