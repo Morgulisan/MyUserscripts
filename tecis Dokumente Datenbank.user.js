@@ -3,7 +3,7 @@
 // @namespace    http://tampermonkey.net/
 // @version      1.4
 // @description  Dynamically load PDF templates from a server and Fills them up
-// @author       Your Name
+// @author       Malte Kretzschmar
 // @match        https://bm.bp.vertrieb-plattform.de/bm/*
 // @grant        GM_xmlhttpRequest
 // @connect      mopoliti.de
