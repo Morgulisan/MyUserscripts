@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         tecis PrefillForm Store
 // @namespace    http://tampermonkey.net/
-// @version      1.4
-// @description  Dynamically load PDF templates from a server and Fills them up
+// @version      1.5
+// @description  Dynamically load PDF templates from a server and fill them up on demand.
 // @author       Malte Kretzschmar
 // @match        https://bm.bp.vertrieb-plattform.de/bm/*
 // @grant        GM_xmlhttpRequest
@@ -79,7 +79,7 @@
     const beraterID = document.querySelector("#page\\:center\\:exitForm\\:beraterInfoLink").innerText.slice(-6,);
 
     // --- Step B: Fetch live personal data from the CRM API ---
-    const personalDataUrl = 'https://www.crm.vertrieb-plattform.de/kundendetails-personalien/api/personalien/person/'+ customerID + '?betreuerNr=' + beraterID;
+    const personalDataUrl = 'https://www.crm.vertrieb-plattform.de/kundendetails-personalien/api/personalien/person/' + customerID + '?betreuerNr=' + beraterID;
     let personalData = {};
     try {
         const personalDataJson = await gmFetch(personalDataUrl);
@@ -158,12 +158,11 @@
                     const chkboxSelector = "#dialogForm0\\:chkbxNoGespraechsnotiz > div.ui-chkbox-box.ui-widget.ui-corner-all.ui-state-default";
                     const chkbox = document.querySelector(chkboxSelector);
                     if (!chkbox) throw new Error("Checkbox element not found.");
-                    // Simply click the checkbox (as in the original static script)
                     chkbox.click();
                     await wait(100);
                 });
 
-                // Step 4: Set the title field (dialogForm0:bezeichnung_input) with the template name
+                // Step 4: Set the title field with the template name
                 await performAction(async () => {
                     const titleInput = document.querySelector("#dialogForm0\\:bezeichnung_input");
                     if (!titleInput) throw new Error("Title input element not found.");
@@ -171,13 +170,25 @@
                     await wait(100);
                 });
 
-                // Step 5: Process the PDF file upload
+                // Step 5: Fetch and process the PDF file upload
                 await performAction(async () => {
                     const fileInput = document.querySelector("#dialogForm0\\:fileUpload_anschreibenantrag_input");
                     if (!fileInput) throw new Error("File input element not found.");
 
+                    // *** NEW: Fetch the PDF file on demand ***
+                    let pdfData;
+                    try {
+                        pdfData = await gmFetch(template.pdf_url);
+                        if (pdfData.status !== 'success' || !pdfData.pdf) {
+                            throw new Error(pdfData.message || 'Error fetching PDF file');
+                        }
+                    } catch (err) {
+                        console.error('Error fetching PDF file:', err);
+                        return;
+                    }
+                    const pdfBase64 = pdfData.pdf;
+
                     // Convert the stored Base64 PDF into a Blob
-                    const pdfBase64 = template.pdf; // from the PHP response
                     function base64ToBlob(base64, contentType = 'application/pdf') {
                         const byteCharacters = atob(base64);
                         const byteNumbers = new Array(byteCharacters.length);
@@ -191,24 +202,20 @@
 
                     // Use PDFLib to fill in the PDF fields based on the template's field mappings
                     try {
-                        // Convert the Blob into an ArrayBuffer
                         const existingPdfBytes = await pdfBlob.arrayBuffer();
                         const pdfDoc = await PDFDocument.load(existingPdfBytes);
                         const form = pdfDoc.getForm();
 
-                        // Log all fields found in the PDF (for debugging)
+                        // Debug: Log all fields found in the PDF
                         const fields = form.getFields();
                         console.log("Found PDF fields:");
                         fields.forEach(field => console.log(`- ${field.getName()}`));
 
-                        // Use the field_mappings from the template.
-                        // Example: { "Name": "nachname", "Vorname": "vorname", ... }
+                        // Use the field_mappings from the template (e.g., { "Name": "nachname", "Vorname": "vorname", ... })
                         const mappings = template.field_mappings || {};
                         for (const [pdfFieldName, dataKey] of Object.entries(mappings)) {
                             try {
-                                // Use resolveJsonPath to support nested JSON keys (or direct property names)
                                 const value = resolveJsonPath(personalData, dataKey) || "";
-                                // Find the text field in the PDF by name:
                                 const textField = form.getTextField(pdfFieldName);
                                 textField.setText(String(value));
                             } catch (e) {
@@ -234,7 +241,6 @@
                 });
             }
 
-            // Execute the sequence; log errors if any
             sequentialExecution().catch(console.error);
         });
     });
@@ -279,12 +285,9 @@
                             default: return false;
                         }
                     });
-                    // If no matches were found, return undefined.
                     if (filtered.length === 0) return undefined;
-                    // If the filter returns a single match, use that object for further resolution.
                     current = filtered.length === 1 ? filtered[0] : filtered;
                 } else {
-                    // Handle tokens with an array index, e.g., "adressen[0]"
                     const arrayMatch = token.match(/(.*?)\[(\d+)\]$/);
                     if (arrayMatch) {
                         const prop = arrayMatch[1];
@@ -293,7 +296,6 @@
                         if (!Array.isArray(current)) return undefined;
                         current = current[index];
                     } else {
-                        // Regular object property.
                         current = current[token];
                     }
                 }
