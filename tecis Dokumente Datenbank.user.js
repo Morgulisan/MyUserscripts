@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         tecis PrefillForm Store
 // @namespace    http://tampermonkey.net/
-// @version      1.5
+// @version      1.6.2
 // @description  Dynamically load PDF templates from a server and fill them up on demand.
 // @author       Malte Kretzschmar
 // @match        https://bm.bp.vertrieb-plattform.de/bm/*
@@ -75,7 +75,13 @@
         return;
     }
 
-    const customerID = document.querySelector("#page\\:center\\:navigationForm\\:j_idt33\\:j_idt37\\:2\\:j_idt40 > div.navigation_item_double").innerText.slice(1,-1);
+    let customerID;
+    document.querySelectorAll('.navigation_item_double').forEach(el => {
+        const text = el.innerText.trim();
+        if (/^\(\d+\)$/.test(text)) { // matches something like "(147566674)"
+            customerID = text.slice(1, -1);
+        }
+    });
     const beraterID = document.querySelector("#page\\:center\\:exitForm\\:beraterInfoLink").innerText.slice(-6,);
 
     // --- Step B: Fetch live personal data from the CRM API ---
@@ -245,67 +251,101 @@
         });
     });
 
-    // Simple JSONPath resolver for limited functionality.
-    // Supports paths like $.adressen[0].strasseHausnummer.strasse
-    function resolveJsonPath(obj, path) {
-        try {
-            if (!path.startsWith('$')) {
-                // Not a JSONPath; treat as a direct property.
-                return obj[path];
-            }
-            // Remove the leading '$' and any dot that immediately follows.
-            path = path.replace(/^\$\.*?/, '');
-            // Split the path into tokens by dot.
-            const tokens = path.split('.').filter(token => token);
-            let current = obj;
-            for (let token of tokens) {
-                // Check if the token contains a filter expression like:
-                // "legitimationen[?(@.dokumentTyp==6)]"
-                const filterMatch = token.match(/(.*?)\[\?\(@\.(.*?)\s*([=!><]=?)\s*(.*?)\)\]/);
-                if (filterMatch) {
-                    const arrayProp = filterMatch[1]; // e.g. "legitimationen"
-                    const left = filterMatch[2];        // e.g. "dokumentTyp"
-                    const operator = filterMatch[3];    // e.g. "=="
-                    let right = filterMatch[4];         // e.g. "6"
-                    // Remove any surrounding quotes from the right-hand side.
-                    right = right.replace(/^['"]|['"]$/g, '');
-                    // Navigate to the array.
-                    current = current[arrayProp];
-                    if (!Array.isArray(current)) return undefined;
-                    // Filter the array based on the condition.
-                    let filtered = current.filter(item => {
-                        const itemValue = item[left];
-                        switch (operator) {
-                            case '==': return itemValue == right;
-                            case '!=': return itemValue != right;
-                            case '>':  return itemValue > right;
-                            case '>=': return itemValue >= right;
-                            case '<':  return itemValue < right;
-                            case '<=': return itemValue <= right;
-                            default: return false;
-                        }
-                    });
-                    if (filtered.length === 0) return undefined;
-                    current = filtered.length === 1 ? filtered[0] : filtered;
-                } else {
-                    const arrayMatch = token.match(/(.*?)\[(\d+)\]$/);
-                    if (arrayMatch) {
-                        const prop = arrayMatch[1];
-                        const index = parseInt(arrayMatch[2], 10);
-                        current = current[prop];
-                        if (!Array.isArray(current)) return undefined;
-                        current = current[index];
-                    } else {
-                        current = current[token];
-                    }
-                }
-                if (current === undefined) return undefined;
-            }
-            return current;
-        } catch (e) {
-            console.error('Error resolving JSONPath', path, e);
-            return undefined;
+    // --- Enhanced JSONPath Resolver ---
+    // This helper tokenizes the JSONPath string (splitting on dots not within brackets)
+    // and supports filter expressions like: [?( @.prop==value )]
+    function tokenizePath(path) {
+        // Remove leading "$" and optional dot.
+        if (path.startsWith('$')) {
+            path = path.substring(1);
         }
+        if (path.startsWith('.')) {
+            path = path.substring(1);
+        }
+        const tokens = [];
+        let current = "";
+        let inBracket = false;
+        let bracketCount = 0;
+        for (let char of path) {
+            if (char === '[') {
+                inBracket = true;
+                bracketCount++;
+                current += char;
+            } else if (char === ']') {
+                current += char;
+                bracketCount--;
+                if (bracketCount === 0) {
+                    inBracket = false;
+                }
+            } else if (char === '.' && !inBracket) {
+                tokens.push(current);
+                current = "";
+            } else {
+                current += char;
+            }
+        }
+        if (current) {
+            tokens.push(current);
+        }
+        return tokens;
+    }
+
+    // The new resolveJsonPath now supports filter expressions that include nested dot notation.
+    function resolveJsonPath(obj, path) {
+        if (!path) return undefined;
+        // If the path does not start with '$', assume it's a direct property name.
+        if (!path.startsWith('$')) {
+            return obj[path];
+        }
+        const tokens = tokenizePath(path);
+        let current = obj;
+        for (let token of tokens) {
+            if (token === "") continue;
+
+            // Check for filter expression of the form: property[?(@.prop operator value)]
+            const filterMatch = token.match(/^(.*?)\[\?\(@\.(.*?)\s*(==|!=|>|>=|<|<=)\s*(.*?)\)\]$/);
+            if (filterMatch) {
+                const prop = filterMatch[1];
+                const filterProp = filterMatch[2];
+                const operator = filterMatch[3];
+                let compValue = filterMatch[4];
+                // Remove any surrounding quotes from the comparison value.
+                compValue = compValue.replace(/^['"]|['"]$/g, '');
+                current = current[prop];
+                if (!Array.isArray(current)) return undefined;
+                const filtered = current.filter(item => {
+                    const left = item[filterProp];
+                    switch (operator) {
+                        case '==': return left == compValue;
+                        case '!=': return left != compValue;
+                        case '>':  return left > compValue;
+                        case '>=': return left >= compValue;
+                        case '<':  return left < compValue;
+                        case '<=': return left <= compValue;
+                        default: return false;
+                    }
+                });
+                if (filtered.length === 0) return undefined;
+                current = (filtered.length === 1) ? filtered[0] : filtered;
+                continue;
+            }
+
+            // Check for array index token e.g., "adressen[0]"
+            const arrayMatch = token.match(/^(.*?)\[(\d+)\]$/);
+            if (arrayMatch) {
+                const prop = arrayMatch[1];
+                const index = parseInt(arrayMatch[2], 10);
+                current = current[prop];
+                if (!Array.isArray(current)) return undefined;
+                current = current[index];
+                continue;
+            }
+
+            // Regular property access.
+            current = current[token];
+            if (current === undefined) return undefined;
+        }
+        return current;
     }
 
 })();
