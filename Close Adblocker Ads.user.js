@@ -5,6 +5,7 @@
 // @description  closes the Adblocker ads - adblocker blocker
 // @author       Malte Kretzschmar
 // @match        https://adblockplus.org/de/update*
+// @match        https://adblockplus.org/update?*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=adblockplus.org
 // @grant        none
 // ==/UserScript==
