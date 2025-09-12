@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         tecis PrefillForm Store
 // @namespace    http://tampermonkey.net/
-// @version      1.6.2
+// @version      1.7.0
 // @description  Dynamically load PDF templates from a server and fill them up on demand.
 // @author       Malte Kretzschmar
 // @match        https://bm.bp.vertrieb-plattform.de/bm/*
@@ -10,6 +10,10 @@
 // @connect      www.crm.vertrieb-plattform.de
 // @require      https://cdn.jsdelivr.net/npm/pdf-lib/dist/pdf-lib.min.js
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
+// @downloadURL  https://mopoliti.de/Userscripts/tecis%20Dokumente%20Datenbank.user.js
+// @updateURL    https://mopoliti.de/Userscripts/tecis%20Dokumente%20Datenbank.user.js
+// @homepageURL  https://mopoliti.de/Userscripts/
+// @supportURL   https://mopoliti.de/Userscripts/
 // ==/UserScript==
 
 (async function() {
@@ -160,13 +164,63 @@
                 });
 
                 // Step 3: Automatically handle the checkbox (simulate a click)
-                await performAction(async () => {
-                    const chkboxSelector = "#dialogForm0\\:chkbxNoGespraechsnotiz > div.ui-chkbox-box.ui-widget.ui-corner-all.ui-state-default";
-                    const chkbox = document.querySelector(chkboxSelector);
-                    if (!chkbox) throw new Error("Checkbox element not found.");
-                    chkbox.click();
-                    await wait(100);
-                });
+                if(template.gespraechsnotiz_name == null) {
+                    await performAction(async () => {
+                        const chkboxSelector = "#dialogForm0\\:chkbxNoGespraechsnotiz > div.ui-chkbox-box.ui-widget.ui-corner-all.ui-state-default";
+                        const chkbox = document.querySelector(chkboxSelector);
+                        if (!chkbox) throw new Error("Checkbox element not found.");
+                        chkbox.click();
+                        await wait(100);
+                    });
+                }
+                else {
+                    // Tampermonkey userscript body (run-at document-idle or after page is up)
+                    (function() {
+                        // Helper: escape JSF colons in CSS selectors
+                        const esc = id => id.replace(/:/g, '\\:');
+
+                        // Wait for an element to become present + (optionally) visible
+                        function waitFor(sel, {visible=false, timeout=5000} = {}) {
+                            return new Promise((resolve, reject) => {
+                                const start = performance.now();
+                                const tm = setInterval(() => {
+                                    const el = document.querySelector(sel);
+                                    if (el && (!visible || getComputedStyle(el).display !== 'none')) {
+                                        clearInterval(tm); resolve(el);
+                                    } else if (performance.now() - start > timeout) {
+                                        clearInterval(tm); reject(new Error('Timeout waiting for ' + sel));
+                                    }
+                                }, 50);
+                            });
+                        }
+
+                        async function selectMenuItemByText({buttonId, menuId, labelText}) {
+                            // 1) open the menu
+                            const btn = await waitFor('#' + esc(buttonId), {visible:true});
+                            btn.click();
+
+                            // 2) wait until menu is visible
+                            const menu = await waitFor('#' + esc(menuId), {visible:true});
+
+                            // 3) find the <span class="ui-menuitem-text"> with the label
+                            const items = menu.querySelectorAll('li.ui-menuitem a.ui-menuitem-link .ui-menuitem-text');
+                            const targetSpan = Array.from(items).find(s => s.textContent.trim() === labelText);
+                            if (!targetSpan) throw new Error('Menu item not found: ' + labelText);
+
+                            // 4) click it (on the A or the span is fine)
+                            targetSpan.click();
+                        }
+
+                        // Example call: adapt the label to what you actually need
+                        selectMenuItemByText({
+                            buttonId: 'dialogForm0:gn_auswahl_button',
+                            menuId:   'dialogForm0:gn_menu',
+                            labelText: template.gespraechsnotiz_name // <- exact visible label
+                        }).catch(console.error);
+
+                    })();
+
+                }
 
                 // Step 4: Set the title field with the template name
                 await performAction(async () => {
