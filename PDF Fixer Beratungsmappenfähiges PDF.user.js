@@ -2,10 +2,15 @@
 // @name         PDF NeedAppearances Fixer for Vertrieb-Plattform (v5 - Safari Fix)
 // @namespace    http://tampermonkey.net/
 // @version      5.0
-// @description  Intercepts PDF downloads, removes the 'NeedAppearances' flag, and provides the corrected file. Cross-browser compatible.
-// @author       Your Name
+// @description  Fängt PDF-Downloads von crm.vertrieb-plattform.de ab, entfernt das verbotene Flag „NeedAppearances=true“ und stellt die korrigierte Datei zum Download bereit.
+// @author       Malte Kretzschmar
 // @match        https://www.crm.vertrieb-plattform.de/betreuung/crm/*
 // @require      https://unpkg.com/pdf-lib/dist/pdf-lib.min.js
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
+// @downloadURL  https://mopoliti.de/Userscripts/PDF%20Fixer%20Beratungsmappenf%C3%A4higes%20PDF.user.js
+// @updateURL    https://mopoliti.de/Userscripts/PDF%20Fixer%20Beratungsmappenf%C3%A4higes%20PDF.user.js
+// @homepageURL  https://mopoliti.de/Userscripts/
+// @supportURL   https://mopoliti.de/Userscripts/
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
 // @connect      crm.vertrieb-plattform.de
