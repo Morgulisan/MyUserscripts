@@ -1,12 +1,11 @@
 // ==UserScript==
-// @name         PDF Fixer Beratungsmappenfähiges PDF (v4 - Final)
+// @name         PDF NeedAppearances Fixer for Vertrieb-Plattform (v5 - Safari Fix)
 // @namespace    http://tampermonkey.net/
-// @version      4.0
-// @description  Fängt PDF-Downloads von crm.vertrieb-plattform.de ab, entfernt das verbotene Flag „NeedAppearances=true“ und stellt die korrigierte Datei zum Download bereit.
-// @author       Malte Kretzschmar
+// @version      5.0
+// @description  Intercepts PDF downloads, removes the 'NeedAppearances' flag, and provides the corrected file. Cross-browser compatible.
+// @author       Your Name
 // @match        https://www.crm.vertrieb-plattform.de/betreuung/crm/*
 // @require      https://unpkg.com/pdf-lib/dist/pdf-lib.min.js
-// @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
 // @connect      crm.vertrieb-plattform.de
@@ -16,7 +15,7 @@
 (function() {
     'use strict';
 
-    console.log('PDF NeedAppearances Fixer v4 script is active.');
+    console.log('PDF NeedAppearances Fixer v5 (Safari Fix) script is active.');
 
     // --- Helper function to trigger a browser download ---
     function triggerDownload(fileName, data) {
@@ -42,23 +41,13 @@
         try {
             console.log('Loading PDF into pdf-lib...');
             const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
-
-            // *** THE CORRECT FIX IS HERE ***
-            // Instead of using the high-level getForm(), we access the low-level
-            // document catalog directly. This is the root dictionary of the PDF.
             const catalog = pdfDoc.catalog;
             const acroFormName = PDFLib.PDFName.of('AcroForm');
 
-            // Check if the catalog has a reference to an AcroForm dictionary.
             if (catalog.has(acroFormName)) {
-                // If it does, get the actual AcroForm dictionary object.
-                // .lookup() is the correct way to retrieve a dictionary reference.
                 const acroForm = catalog.lookup(acroFormName, PDFLib.PDFDict);
-
-                // Now that we have the correct PDFDict object, we can check for the flag.
                 const needAppearancesName = PDFLib.PDFName.of('NeedAppearances');
                 if (acroForm && acroForm.has(needAppearancesName)) {
-                    // .delete() is the correct method on a PDFDict.
                     acroForm.delete(needAppearancesName);
                     console.log('Successfully removed "NeedAppearances=true" flag.');
                 } else {
@@ -68,7 +57,6 @@
                 console.log('PDF does not contain an AcroForm dictionary. No changes needed.');
             }
 
-            // Save the document. If no changes were made, this just re-serializes the original.
             const fixedPdfBytes = await pdfDoc.save();
             console.log('PDF has been processed and saved in memory.');
             return fixedPdfBytes;
@@ -78,17 +66,23 @@
         }
     }
 
-    // --- Interception Logic for window.open (Unchanged) ---
+    // --- Interception Logic for window.open ---
     const originalWindowOpen = unsafeWindow.open;
 
     unsafeWindow.open = function(url, target, features) {
-        // A more robust check for PDF URLs that may not have the extension at the very end
         if (typeof url === 'string' && url.toLowerCase().includes('.pdf')) {
             console.log('Intercepted window.open for a PDF:', url);
 
+            // *** THE SAFARI FIX IS HERE ***
+            // Create a full, absolute URL object. This resolves relative paths
+            // (e.g., "/activity/api/...") against the current page's origin.
+            // This is crucial for Safari's stricter security model.
+            const absoluteUrl = new URL(url, window.location.origin);
+            console.log(`Resolved URL to absolute for request: ${absoluteUrl.href}`);
+
             GM_xmlhttpRequest({
                 method: 'GET',
-                url: url,
+                url: absoluteUrl.href, // Always use the absolute URL for the request
                 responseType: 'arraybuffer',
                 onload: async function(response) {
                     if (response.status >= 200 && response.status < 300) {
@@ -98,19 +92,12 @@
 
                         if (fixedBuffer) {
                             let fileName = "downloaded.pdf";
-                            try {
-                                const urlObj = new URL(url, window.location.origin);
-                                const urlParams = urlObj.searchParams;
-                                if (urlParams.has('fileName')) {
-                                    fileName = urlParams.get('fileName');
-                                } else {
-                                    const path = urlObj.pathname;
-                                    fileName = path.substring(path.lastIndexOf('/') + 1);
-                                }
-                            } catch (e) {
-                                console.warn("Could not parse URL to get filename, using fallback.");
-                                const tempName = url.split('?')[0];
-                                fileName = tempName.substring(tempName.lastIndexOf('/') + 1);
+                            const urlParams = absoluteUrl.searchParams;
+                            if (urlParams.has('fileName')) {
+                                fileName = urlParams.get('fileName');
+                            } else {
+                                const path = absoluteUrl.pathname;
+                                fileName = path.substring(path.lastIndexOf('/') + 1);
                             }
                             triggerDownload(fileName, fixedBuffer);
                         } else {
