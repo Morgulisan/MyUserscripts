@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         tecis PrefillForm Store
+// @name         tecis Dokumente Datenbank
 // @namespace    http://tampermonkey.net/
-// @version      1.7.0
-// @description  Dynamically load PDF templates from a server and fill them up on demand.
+// @version      1.7.1
+// @description  Vorbefüllte PDFs und Anträge mit einem Click in die Beratungsmappe laden: HEK, hkk, Erhöhungen und Kampagnen
 // @author       Malte Kretzschmar
 // @match        https://bm.bp.vertrieb-plattform.de/bm/*
 // @grant        GM_xmlhttpRequest
