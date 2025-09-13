@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         PDF NeedAppearances Fixer for Vertrieb-Plattform (v5 - Safari Fix)
 // @namespace    http://tampermonkey.net/
-// @version      5.2
-// @description  Fängt PDF-Downloads von crm.vertrieb-plattform.de ab, entfernt das verbotene Flag „NeedAppearances=true“ und stellt die korrigierte Datei zum Download bereit.
+// @version      5.3
+// @description  Fängt PDF-Downloads von crm.vertrieb-plattform.de ab, entfernt das verbotene Flag „NeedAppearances=true“ und stellt die korrigierte Datei zum Download bereit. Verhindert die Ausführung, wenn "Vertragsdetails" vorhanden ist.
 // @author       Malte Kretzschmar
 // @match        https://www.crm.vertrieb-plattform.de/betreuung/crm/*
 // @require      https://mopoliti.de/Userscripts/libraries/pdf-lib.js
@@ -75,7 +75,16 @@
     const originalWindowOpen = unsafeWindow.open;
 
     unsafeWindow.open = function(url, target, features) {
-        if (typeof url === 'string' && url.toLowerCase().includes('.pdf')) {
+        // Check if the blocking element exists on the page at the moment of the call.
+        const vertragsdetailsHeader = document.querySelector('h3.sldo-cl-u-pad-3');
+        const shouldBlockInterception = vertragsdetailsHeader && vertragsdetailsHeader.textContent.trim() === 'Vertragsdetails';
+
+        // The condition to trigger interception: it's a PDF URL AND the blocking element is NOT present.
+        const shouldIntercept = typeof url === 'string' &&
+                                url.toLowerCase().includes('.pdf') &&
+                                !shouldBlockInterception;
+
+        if (shouldIntercept) {
             console.log('Intercepted window.open for a PDF:', url);
 
             // *** THE SAFARI FIX IS HERE ***
@@ -121,6 +130,12 @@
 
             return null;
         }
+
+        if (shouldBlockInterception && typeof url === 'string' && url.toLowerCase().includes('.pdf')) {
+            console.log('"Vertragsdetails" element found. Skipping PDF interception and allowing default browser behavior.');
+        }
+
+        // If the interception condition is not met, let the original window.open handle it.
         return originalWindowOpen.apply(this, arguments);
     };
 
