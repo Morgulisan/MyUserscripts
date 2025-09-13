@@ -6,6 +6,7 @@
 // @author       Malte Kretzschmar
 // @match        https://www.crm.vertrieb-plattform.de/betreuung/crm/*
 // @require      https://unpkg.com/pdf-lib/dist/pdf-lib.min.js
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
 // @connect      crm.vertrieb-plattform.de
