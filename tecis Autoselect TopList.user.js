@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         tecis Autoselect TopList
 // @namespace    http://tampermonkey.net/
-// @version      0.2
+// @version      0.3
 // @description  Add Buttons to autoselect the correct Top-List
 // @author       Malte Kretzschmar
 // @match        https://vertrieb.tecis.de:11059/gr/reporting/ur/home.do

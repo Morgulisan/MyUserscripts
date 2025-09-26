@@ -1,86 +1,86 @@
 // Global configuration for the script
-const DEFAULT_START_ADDRESS = 'Düppelstraße 1, 52068 Aachen'; // Default address for event starting points
+const DEFAULT_START_ADRESS = 'Düppelstraße 1, 52068 Aachen'; // Default adress for event starting points
 const DAYS_TO_CHECK_IN_FUTURE = 14; // Number of days ahead to fetch calendar events
-const HOURS_TO_RESET = 4; // Time threshold in hours to reset the start address to default
+const HOURS_TO_RESET = 6; // Time threshold in hours to reset the start adress to default
 const TRAVEL_IDENTIFIER_STRING = 'Anreise ';
 
 
 // Function to add travel time blocks to your calendar based on events
 function addTravelTimeBlockers() {
-  let calendarId = 'primary'; // Identifier for the target calendar
+  let calendarId = 'primary';
   let today = new Date();
   today.setHours(0);
   today.setMinutes(1);
-  let futureDate = new Date(today.getTime() + DAYS_TO_CHECK_IN_FUTURE * 24 * 60 * 60 * 1000); // Date after the specified number of days
+  let futureDate = new Date(today.getTime() + DAYS_TO_CHECK_IN_FUTURE * 24 * 60 * 60 * 1000);
 
-  // Fetching events between today and the future date
   let events = CalendarApp.getCalendarById(calendarId).getEvents(today, futureDate);
-  events.sort(function(a, b) { return a.getStartTime() - b.getStartTime(); }); // Sort events by start time for sequential processing
+  events.sort((a, b) => a.getStartTime() - b.getStartTime());
 
-  let lastEventEnd = null; // Track end time of the last event
-  let lastEventLocation = DEFAULT_START_ADDRESS; // Track location of the last event, start with default
+  events.forEach((event, index) => {
 
-  events.forEach(function(event, index) {
-    let nextEvent = events[index + 1]; // Get the next event in the list
-    if (!event.getLocation() && nextEvent && event.getEndTime().getTime() === nextEvent.getStartTime().getTime() &&
-        !isDigitalLocation(nextEvent.getLocation()) && !event.getTitle().includes(TRAVEL_IDENTIFIER_STRING)) {
-      // Set the location of the current event to the location of the next event
-      event.setLocation(nextEvent.getLocation());
+    const prevEvent = events[index-1];
+
+    //#region Skip Events that are back to back to previous events. This skipps all Traveltimes
+    if (prevEvent && prevEvent.getEndTime().getTime() === event.getStartTime().getTime()) {
+      console.log("Skipping Event: " + event.getTitle() + " because its back to back to prev Event");
+      return; // Skip this iteration
     }
-
-    if(!event.getLocation() || isDigitalLocation(event.getLocation()) || event.getTitle().includes(TRAVEL_IDENTIFIER_STRING)){
+    //#endregion
+    //#region Skip Events that are Online or Travel
+    if (!event.getLocation() || isDigitalLocation(event.getLocation()) || event.getTitle().includes(TRAVEL_IDENTIFIER_STRING)) {
+      if(isDigitalLocation(event.getLocation())){
+        console.log("Skipping " + event.getTitle() + " because its digital");
+      }
       return;
     }
-    let startAddress = lastEventLocation;
-    let eventStartTime = event.getStartTime();
-
-    // Check if the previous event's location should be used as the starting point
-    if (lastEventEnd && (eventStartTime - lastEventEnd) / 3600000 <= HOURS_TO_RESET) {
-      startAddress = lastEventLocation !== DEFAULT_START_ADDRESS ? lastEventLocation : startAddress;
-    } else {
-      startAddress = DEFAULT_START_ADDRESS; // Reset to default if the gap is larger than HOURS_TO_RESET
-    }
-
-    // Check for existing travel events before creating new ones
-    let travelEventTitle = TRAVEL_IDENTIFIER_STRING + event.getTitle();
-    let startTime = new Date(eventStartTime - (60000 * 60)); // Temporarily assume 1 hour for travel
-    let endTime = eventStartTime;
-
-    let existingTravelEvents = CalendarApp.getCalendarById(calendarId).getEvents(startTime, endTime, {search: travelEventTitle});
-    if (existingTravelEvents.length > 0) {
-      console.log("Travel time already calculated and blocked for this event, skipping recalculation.");
-      return; // Skip recalculation if a travel event already exists
-    }
-
-    // Proceed with travel time calculation
-    let travelDetails = getTravelTime(startAddress, event.getLocation());
-    if (travelDetails) {
-      startTime = new Date(eventStartTime - travelDetails.duration * 1000);
-      endTime = eventStartTime;
-
-      if (!lastEventEnd || startTime >= lastEventEnd) {
-        let notes = `From: ${startAddress} \n To: ${event.getLocation()} \n ${travelDetails.mode}`;
-        let newEvent = CalendarApp.getCalendarById(calendarId).createEvent(travelEventTitle, startTime, endTime, {description: notes});
-        newEvent.setColor("1");
-
-        // Clear all existing reminders
-        newEvent.removeAllReminders();
-
-        // Set a new reminder for 10 minutes before the event
-        newEvent.addPopupReminder(10); // 10 minutes before the event
+    //#endregion
+    //#region Set Adress to events that are Next Back to Back
+    if(!event.getTitle().includes(TRAVEL_IDENTIFIER_STRING) && !event.getLocation()){  //if its not a Travel event nor has a Location.
+      //TODO make recursive
+      if(
+          !event.getLocation()
+          && events[index+1]  //Element exists
+          && !events[index+1].getTitle().includes(TRAVEL_IDENTIFIER_STRING) //isn't a Travel
+          && event.getStartTime().getTime() === events[index+1].getEndTime().getTime() //Times are back to back
+          && events[index+1].getLocation() //previous Event has Location
+      ){
+        event.setLocation(events[index+1].getLocation());
       }
     }
+    //#endregion
+    //#region Set Start Adress for Journey
+    let startAdress = DEFAULT_START_ADRESS;
+    if(prevEvent && (event.getStartTime().getTime() - prevEvent.getEndTime().getTime()) / 3600000 <= HOURS_TO_RESET){
+      startAdress = prevEvent.getLocation();
+    }
+    //#endregion
 
-    lastEventEnd = event.getEndTime(); // Update for the next iteration
-    lastEventLocation = event.getLocation() || lastEventLocation; // Update location if available
+    const travelEventTitle = TRAVEL_IDENTIFIER_STRING + event.getTitle();
+    let startTime = new Date();
+    let endTime = new Date();
+
+    let travelDetails = getTravelTime(startAdress, event.getLocation());
+    if (travelDetails) {
+      startTime = new Date(event.getStartTime().getTime() - travelDetails.duration * 1000);
+      endTime = event.getStartTime();
+
+      if (!prevEvent || startTime >= prevEvent.getEndTime()) {
+        let notes = `From: ${startAdress} \nTo: ${event.getLocation()} \n${travelDetails.mode}`;
+        let newEvent = CalendarApp.getCalendarById(calendarId).createEvent(travelEventTitle, startTime, endTime, {description: notes});
+        newEvent.setColor("1");
+        newEvent.removeAllReminders();
+        newEvent.addPopupReminder(10);
+      }
+    }
   });
 }
 
-// Function to get travel time and mode based on origin and destination addresses
+
+// Function to get travel time and mode based on origin and destination adresses
 function getTravelTime(origin, destination) {
   if (!origin || origin.trim() === '') {
-    console.log("Invalid origin. Using default address.");
-    origin = DEFAULT_START_ADDRESS;
+    console.log("Invalid origin. Using default adress.");
+    origin = DEFAULT_START_ADRESS;
   }
   console.log("Calculating travel from " + origin + " to " + destination); // Logging for debugging
 

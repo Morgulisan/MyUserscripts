@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         tecis Antragsprüfung
 // @namespace    http://tampermonkey.net/
-// @version      2025-02-19
+// @version      2025-09-17
 // @description  Markiert alle Umsatzsteuerpflichtigen Umsätze als geprüft.
 // @author       Malte Kretzschmar
 // @match        https://vertrieb.tecis.de:11059/ka/kapruefung/antragpruefung.faces
