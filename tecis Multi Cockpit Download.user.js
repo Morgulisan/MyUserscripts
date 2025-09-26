@@ -2,6 +2,7 @@
 // @name         tecis Multi Cockpit Download
 // @namespace    http://tampermonkey.net/
 // @version      2024-01-03
+// @updateURL    https://mopoliti.de/Userscripts/tecis%20Multi%20Cockpit%20Download.user.js
 // @description  Download multiple Cockpits
 // @author       Malte Kretzschmar
 // @match        https://vertrieb.tecis.de:11059/gr/reporting/zeigeBeurteilungsbogenForm.do

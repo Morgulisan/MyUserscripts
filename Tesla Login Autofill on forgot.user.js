@@ -2,6 +2,7 @@
 // @name         Tesla Login Autofill on forgot
 // @namespace    http://tampermonkey.net/
 // @version      0.3
+// @updateURL    https://mopoliti.de/Userscripts/Tesla%20Login%20Autofill%20on%20forgot.user.js
 // @description  Autofill email if provided as parameter
 // @author       Malte Kretzschmar
 // @match        https://auth.tesla.com/*/user/password/forgot*

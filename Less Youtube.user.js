@@ -2,6 +2,7 @@
 // @name         Less Youtube
 // @namespace    http://tampermonkey.net/
 // @version      0.1
+// @updateURL    https://mopoliti.de/Userscripts/Less%20Youtube.user.js
 // @description  Makes Youtube less interesting in working hours.
 // @author       Malte Kretzschmar
 // @match        https://www.youtube.com/

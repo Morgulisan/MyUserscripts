@@ -2,6 +2,7 @@
 // @name         tecis Autoselect TopList
 // @namespace    http://tampermonkey.net/
 // @version      0.3
+// @updateURL    https://mopoliti.de/Userscripts/tecis%20Autoselect%20TopList.user.js
 // @description  Add Buttons to autoselect the correct Top-List
 // @author       Malte Kretzschmar
 // @match        https://vertrieb.tecis.de:11059/gr/reporting/ur/home.do

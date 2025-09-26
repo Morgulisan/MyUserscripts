@@ -2,6 +2,7 @@
 // @name         tecis Highlight in TopList
 // @namespace    http://tampermonkey.net/
 // @version      0.4
+// @updateURL    https://mopoliti.de/Userscripts/tecis%20Highlight%20in%20top%20Selection.user.js
 // @description  Highlights my team in the TopList Ranking with a background color
 // @author       Malte Kretzschmar
 // @match        https://vertrieb.tecis.de:11059/gr/reporting/ur/topvp.do
