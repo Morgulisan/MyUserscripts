@@ -2,6 +2,7 @@
 // @name         BP Editor Autofill (wibiid)
 // @namespace    https://malte.dev/
 // @version      1.1
+// @updateURL    https://mopoliti.de/Userscripts/BM%20Autofill%202%20von%202.user.js
 // @description  Autofill fields in BP editor using API data when ?autofill=true is present
 // @author       You
 // @match        https://bm.bp.vertrieb-plattform.de/edocbox/editor/ui/?documentid=*

@@ -2,6 +2,7 @@
 // @name         Close Adblocker Ads
 // @namespace    http://tampermonkey.net/
 // @version      2024-07-26
+// @updateURL    https://mopoliti.de/Userscripts/Close%20Adblocker%20Ads.user.js
 // @description  closes the Adblocker ads - adblocker blocker
 // @author       Malte Kretzschmar
 // @match        https://adblockplus.org/de/update*

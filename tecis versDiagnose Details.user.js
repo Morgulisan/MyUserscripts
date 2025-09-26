@@ -2,6 +2,7 @@
 // @name         tecis versDiagnose Details
 // @namespace    http://tampermonkey.net/
 // @version      1
+// @updateURL    https://mopoliti.de/Userscripts/tecis%20versDiagnose%20Details.user.js
 // @description  try to take over the world!
 // @author       Malte
 // @match        https://tecis.versdiagnose.de/~riskassessment/assessment_results.do

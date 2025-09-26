@@ -8,7 +8,7 @@
 // @require      https://mopoliti.de/Userscripts/libraries/pdf-lib.js
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
 // @downloadURL  https://mopoliti.de/Userscripts/PDF%20Fixer%20Beratungsmappenf%C3%A4higes%20PDF.user.js
-// @updateURL    https://mopoliti.de/Userscripts/PDF%20Fixer%20Beratungsmappenf%C3%A4higes%20PDF.user.js
+// @updateURL     https://mopoliti.de/Userscripts/PDF%20Fixer%20Beratungsmappenf%C3%A4higes%20PDF.user.js
 // @homepageURL  https://mopoliti.de/Userscripts/
 // @supportURL   https://mopoliti.de/Userscripts/
 // @grant        unsafeWindow

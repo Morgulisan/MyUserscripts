@@ -11,7 +11,7 @@
 // @require      https://cdn.jsdelivr.net/npm/pdf-lib/dist/pdf-lib.min.js
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
 // @downloadURL  https://mopoliti.de/Userscripts/tecis%20Dokumente%20Datenbank.user.js
-// @updateURL    https://mopoliti.de/Userscripts/tecis%20Dokumente%20Datenbank.user.js
+// @updateURL     https://mopoliti.de/Userscripts/tecis%20Dokumente%20Datenbank.user.js
 // @homepageURL  https://mopoliti.de/Userscripts/
 // @supportURL   https://mopoliti.de/Userscripts/
 // ==/UserScript==

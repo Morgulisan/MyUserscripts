@@ -2,6 +2,7 @@
 // @name         Autosave Steam-Game-key
 // @namespace    http://tampermonkey.net/
 // @version      0.1
+// @updateURL    https://mopoliti.de/Userscripts/Autosave%20key.user.js
 // @description  Clicks redeem on steam keys to auto-redeem a bunch.
 // @author       You
 // @match        https://store.steampowered.com/account/registerkey*

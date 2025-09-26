@@ -2,6 +2,7 @@
 // @name         Tesla Password Change
 // @namespace    http://tampermonkey.net/
 // @version      0.3
+// @updateURL    https://mopoliti.de/Userscripts/TeslaPasswordChange.user.js
 // @description  Propose a  password when resetting a teslaaccount password
 // @author       Malte Kretzschmar
 // @match        https://auth.tesla.com/user/password/reset/*

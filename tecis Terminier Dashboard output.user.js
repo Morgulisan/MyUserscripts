@@ -2,6 +2,7 @@
 // @name         tecis TerminierDashboard
 // @namespace    http://tampermonkey.net/
 // @version      0.2
+// @updateURL    https://mopoliti.de/Userscripts/tecis%20Terminier%20Dashboard%20output.user.js
 // @description  Ein Dashboard für Tecis-Veranstaltungen bei denen Termine gelegt werden
 // @author       Malte Kretzschmar
 // @match        https://www.crm.vertrieb-plattform.de/Terminieren
