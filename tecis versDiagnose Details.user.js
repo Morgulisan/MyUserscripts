@@ -4,7 +4,7 @@
 // @version      1
 // @updateURL    https://mopoliti.de/Userscripts/tecis%20versDiagnose%20Details.user.js
 // @description  try to take over the world!
-// @author       Malte
+// @author       Malte Kretzschmar
 // @match        https://tecis.versdiagnose.de/~riskassessment/assessment_results.do
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=versdiagnose.de
 // @grant        none

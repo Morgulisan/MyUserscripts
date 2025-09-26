@@ -3,7 +3,7 @@
 // @namespace    http://tampermonkey.net/
 // @version      0.1
 // @updateURL    https://mopoliti.de/Userscripts/tecis%20CRM%20Copy%20Buttons.user.js
-// @description  In der Personalien Ansicht werden alle einträge mit einem Koppier knopf versehen nachdem Strg oder WindowsTaste gedrückt wurden
+// @description  In der Personalien Ansicht werden alle Einträge mit einem Kopierknopf versehen nachdem Strg oder WindowsTaste gedrückt wurden
 // @author       Malte Kretzschmar
 // @match        https://vertrieb.tecis.de/betreuung/crm/hauptnavigation/*+kundendetails
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de

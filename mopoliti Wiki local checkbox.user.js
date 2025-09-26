@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Malte Wiki - Local Checkbox
 // @namespace    http://tampermonkey.net/
-// @version      2024-02-23
+// @version      2
 // @updateURL    https://mopoliti.de/Userscripts/mopoliti%20Wiki%20local%20checkbox.user.js
 // @description  Enables local checkbox-states saved to local storage
 // @author       Malte Kretzschmar

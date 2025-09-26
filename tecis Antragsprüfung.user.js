@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         tecis Antragsprüfung
 // @namespace    http://tampermonkey.net/
-// @version      2025-09-17
+// @version      3
 // @updateURL    https://mopoliti.de/Userscripts/tecis%20Antragspr%C3%BCfung.user.js
 // @description  Markiert alle Umsatzsteuerpflichtigen Umsätze als geprüft.
 // @author       Malte Kretzschmar

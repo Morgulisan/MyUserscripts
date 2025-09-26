@@ -3,7 +3,7 @@
 // @namespace    http://tampermonkey.net/
 // @version      0.1
 // @description  Depotbestand Logging
-// @author       Malte
+// @author       Malte Kretzschmar
 // @match        https://tecis.bp.fundsaccess.eu/fpt/tecis/newsBpMysql.do?method=view*
 // @match        https://tecis.bp.fundsaccess.eu/*/login?*
 // @match        https://tecis.bp.fundsaccess.eu/*

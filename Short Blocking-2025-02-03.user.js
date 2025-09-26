@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Short Blocking
 // @namespace    http://tampermonkey.net/
-// @version      2025-02-03
+// @version      1
 // @updateURL    https://mopoliti.de/Userscripts/Short%20Blocking-2025-02-03.user.js
 // @description  Disable scrolling on YouTube Shorts pages (blocking the down arrow) and remove the navigation container if present.
 // @author       Malte Kretzschmar

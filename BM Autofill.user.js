@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         BP Editor Autofill (wibiid)
-// @namespace    https://malte.dev/
+// @namespace    http://tampermonkey.net/
 // @version      1.1
 // @updateURL    https://mopoliti.de/Userscripts/BM%20Autofill.user.js
 // @description  Autofill fields in BP editor using API data when ?autofill=true is present
-// @author       You
+// @author       Malte Kretzschmar
 // @match        https://bm.bp.vertrieb-plattform.de/edocbox/editor/ui/?documentid=*
 // @grant        GM_xmlhttpRequest
 // @grant        GM.xmlHttpRequest
