@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         tecis Dokumente Datenbank
 // @namespace    http://tampermonkey.net/
-// @version      1.7.1
+// @version      1.8.1
 // @description  Vorbefüllte PDFs und Anträge mit einem Click in die Beratungsmappe laden: HEK, hkk, Erhöhungen und Kampagnen
 // @author       Malte Kretzschmar
 // @match        https://bm.bp.vertrieb-plattform.de/bm/*
@@ -11,7 +11,7 @@
 // @require      https://cdn.jsdelivr.net/npm/pdf-lib/dist/pdf-lib.min.js
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
 // @downloadURL  https://mopoliti.de/Userscripts/tecis%20Dokumente%20Datenbank.user.js
-// @updateURL     https://mopoliti.de/Userscripts/tecis%20Dokumente%20Datenbank.user.js
+// @updateURL    https://mopoliti.de/Userscripts/tecis%20Dokumente%20Datenbank.user.js
 // @homepageURL  https://mopoliti.de/Userscripts/
 // @supportURL   https://mopoliti.de/Userscripts/
 // ==/UserScript==
@@ -19,6 +19,17 @@
 (async function() {
     'use strict';
     const { PDFDocument } = PDFLib;
+
+    // --- ⬇️ EDIT THIS SECTION FOR CONCATENATION RULES ⬇️ ---
+    // This map defines reusable concatenation rules. The server can refer to these
+    // rules by their key (e.g., "concat_Name_Vorname").
+    const concatenationMap = {
+        // CORRECTED: Using a filter that checks for the primary address flag ("primaer": true)
+        "concat_Strasse_Hausnummer" : ["$.adressen[?(@.primaer==true)].strasseHausnummer.strasse", " ", "$.adressen[?(@.primaer==true)].strasseHausnummer.hausNr"],
+        "concat_PLZ_Ort" : ["$.adressen[?(@.primaer==true)].plzOrt.postleitzahl", " ", "$.adressen[?(@.primaer==true)].plzOrt.ort"],
+        "concat_Name_Vorname": ["$.nachname",  ", ",  "$.vorname"],
+    };
+    // --- ⬆️ END OF EDITABLE SECTION ⬆️ ---
 
     // Utility: Wait for an element to appear in the DOM
     async function waitForElement(selector, timeout = 100000) {
@@ -271,15 +282,33 @@
                         console.log("Found PDF fields:");
                         fields.forEach(field => console.log(`- ${field.getName()}`));
 
-                        // Use the field_mappings from the template (e.g., { "Name": "nachname", "Vorname": "vorname", ... })
+                        // Use the field_mappings from the template
                         const mappings = template.field_mappings || {};
                         for (const [pdfFieldName, dataKey] of Object.entries(mappings)) {
                             try {
-                                const value = resolveJsonPath(personalData, dataKey) || "";
+                                let finalValue;
+
+                                // First, check if the dataKey from the server is a key in our local concat map.
+                                if (concatenationMap.hasOwnProperty(dataKey)) {
+                                    // It is! Perform the concatenation.
+                                    const ruleParts = concatenationMap[dataKey];
+                                    const resolvedParts = ruleParts.map(part => {
+                                        if (typeof part === 'string' && part.startsWith('$')) {
+                                            return resolveJsonPath(personalData, part) || '';
+                                        }
+                                        return part; // It's a literal string
+                                    });
+                                    finalValue = resolvedParts.join('');
+                                } else {
+                                    // It's not a concat rule, so treat it as a normal data path.
+                                    finalValue = resolveJsonPath(personalData, dataKey) || "";
+                                }
+
                                 const textField = form.getTextField(pdfFieldName);
-                                textField.setText(String(value));
+                                textField.setText(String(finalValue));
+
                             } catch (e) {
-                                console.warn(`Field "${pdfFieldName}" not found in the PDF or could not be set.`, e);
+                                console.warn(`Field "${pdfFieldName}" with rule "${dataKey}" could not be set.`, e);
                             }
                         }
 
@@ -365,6 +394,9 @@
                 let compValue = filterMatch[4];
                 // Remove any surrounding quotes from the comparison value.
                 compValue = compValue.replace(/^['"]|['"]$/g, '');
+                if (compValue === 'true') compValue = true; // Handle boolean true
+                if (compValue === 'false') compValue = false; // Handle boolean false
+
                 current = current[prop];
                 if (!Array.isArray(current)) return undefined;
                 const filtered = current.filter(item => {
