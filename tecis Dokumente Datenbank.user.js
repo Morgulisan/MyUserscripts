@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         tecis Dokumente Datenbank
 // @namespace    http://tampermonkey.net/
-// @version      1.8.1
+// @version      1.8.2
 // @description  Vorbefüllte PDFs und Anträge mit einem Click in die Beratungsmappe laden: HEK, hkk, Erhöhungen und Kampagnen
 // @author       Malte Kretzschmar
 // @match        https://bm.bp.vertrieb-plattform.de/bm/*
 // @grant        GM_xmlhttpRequest
+// @grant        GM_addStyle
 // @connect      mopoliti.de
 // @connect      www.crm.vertrieb-plattform.de
 // @require      https://cdn.jsdelivr.net/npm/pdf-lib/dist/pdf-lib.min.js
@@ -18,6 +19,11 @@
 
 (async function() {
     'use strict';
+    GM_addStyle(`
+        div.awd-content-fixed { top: 80px !important; }
+        div.awd-concept-title-buttons { height: 85px !important; }
+    `);
+
     const { PDFDocument } = PDFLib;
 
     // --- ⬇️ EDIT THIS SECTION FOR CONCATENATION RULES ⬇️ ---
@@ -123,6 +129,7 @@
 
     // Create a container for our new PDF buttons
     const container = document.createElement('span');
+    container.style.display = 'block';
     titleButtons.appendChild(container);
 
     // Helper: Create a button for each PDF template
