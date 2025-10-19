@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         tecis Dokumente Datenbank
 // @namespace    http://tampermonkey.net/
-// @version      1.8.2
+// @version      1.8.3
 // @description  Vorbefüllte PDFs und Anträge mit einem Click in die Beratungsmappe laden: HEK, hkk, Erhöhungen und Kampagnen
 // @author       Malte Kretzschmar
 // @match        https://bm.bp.vertrieb-plattform.de/bm/*
@@ -19,10 +19,15 @@
 
 (async function() {
     'use strict';
-    GM_addStyle(`
+
+    try {
+        GM_addStyle(`
         div.awd-content-fixed { top: 80px !important; }
         div.awd-concept-title-buttons { height: 85px !important; }
     `);
+    } catch (e){
+
+    }
 
     const { PDFDocument } = PDFLib;
 
