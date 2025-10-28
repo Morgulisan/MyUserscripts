@@ -1,9 +1,10 @@
 // ==UserScript==
 // @name         tecis tIS Restprovisionshaftungsanzeige
 // @namespace    http://tampermonkey.net/
-// @version      0.3
+// @version      0.4
 // @description  Zeigt im tIS die noch zu verdiendende Provision an (Vereinfachte annahme 1/60)
 // @author       Malte Kretzschmar
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
 // @match        https://reporting.slotbasis.crm.vertrieb-plattform.de/reporting/commission/*
 // @grant        none
 // ==/UserScript==
@@ -12,133 +13,143 @@
     'use strict';
 
     // --- Start of Script ---
-    console.log("Commission Table Enhancer script started.");
+    console.log("Commission Table Enhancer script started (v0.4).");
 
-    // Find the main commission table. This selector is based on the HTML structure provided.
     const commissionTable = document.querySelector('table > tbody > tr > td > table[width="100%"]');
 
     if (!commissionTable) {
-        console.error("Error: Could not find the commission table. The script will not run. Please check the table selector if the website structure has changed.");
-        return; // Stop the script if the table isn't found
+        console.error("Error: Could not find the commission table.");
+        return;
     }
-
     console.log("Successfully found the commission table:", commissionTable);
 
-    // Find the header row to add the new column titles
+    // --- 1. Add New Headers to the Table ---
     const headerRow = commissionTable.querySelector('.tableHeader');
     if (headerRow) {
-        console.log("Found header row:", headerRow);
-
-        // Find the "Provision (netto)" header cell, which will be our anchor for adding new columns
         const provisionNettoHeader = Array.from(headerRow.cells).find(cell => cell.textContent.trim() === 'Provision (netto)');
-
         if (provisionNettoHeader) {
-            console.log("Found 'Provision (netto)' header. Adding new headers.");
-
-            // Create new header cells
             const offeneProvisionHeader = document.createElement('td');
             offeneProvisionHeader.textContent = 'Offene Provision';
-
             const offenesVolumenHeader = document.createElement('td');
             offenesVolumenHeader.textContent = 'Offenes Volumen';
-
             const verdientBisHeader = document.createElement('td');
             verdientBisHeader.textContent = 'Verdient bis';
 
-            // Insert new headers after the "Provision (netto)" header
-            // We insert them one by one, and each new one pushes the previous one to the right.
             provisionNettoHeader.insertAdjacentElement('afterend', verdientBisHeader);
             provisionNettoHeader.insertAdjacentElement('afterend', offenesVolumenHeader);
             provisionNettoHeader.insertAdjacentElement('afterend', offeneProvisionHeader);
-
-            console.log("Successfully added new headers to the table.");
+            console.log("Successfully added new headers.");
         } else {
-            console.error("Could not find the 'Provision (netto)' header cell in the header row.");
+            console.error("Could not find 'Provision (netto)' header cell.");
         }
     } else {
-        console.error("Could not find the header row with class 'tableHeader'.");
+        console.error("Could not find the header row.");
     }
 
-    // Process each data row in the table
-    const dataRows = commissionTable.querySelectorAll('.tableRowOdd, .tableRowEven');
-    console.log(`Found ${dataRows.length} data rows to process.`);
-
-    if (dataRows.length === 0) {
-        console.warn("No data rows with classes '.tableRowOdd' or '.tableRowEven' were found.");
-    }
-
-    dataRows.forEach((row, index) => {
-        console.log(`--- Processing Row ${index + 1} ---`);
+    // --- Helper function to parse data from a table row ---
+    const parseRowData = (row) => {
+        if (!row || row.cells.length < 8) return null;
         const cells = row.cells;
-        const provisionNettoCell = cells[7]; // This is the anchor cell for inserting the new data cells
-
-        // Skip rows that don't have the expected number of columns to prevent errors
-        if (cells.length < 8) {
-            console.warn("Skipping row because it does not have enough cells:", row);
-            return; // continue to next iteration of forEach
-        }
-
-        const abrechnungsdatumCell = cells[0];
-        const ermVolumenCell = cells[3];
-        const provisionBruttoCell = cells[5];
-
-        if (abrechnungsdatumCell && ermVolumenCell && provisionBruttoCell && provisionNettoCell) {
-            // --- 1. Extract and Parse Data ---
-            const abrechnungsdatumText = abrechnungsdatumCell.textContent.trim();
+        try {
+            const abrechnungsdatumText = cells[0].textContent.trim();
             const [day, month, year] = abrechnungsdatumText.split('.').map(Number);
             const abrechnungsdatum = new Date(year, month - 1, day);
 
-            // This complex ".replace" chain handles German number formatting (e.g., "2.370,84 €")
-            const ermVolumenText = ermVolumenCell.textContent.trim();
-            const ermVolumen = parseFloat(ermVolumenText.replace('€', '').replace(/\./g, '').replace(',', '.').trim());
+            const ermVolumen = parseFloat(cells[3].textContent.trim().replace('€', '').replace(/\./g, '').replace(',', '.'));
+            const provisionBrutto = parseFloat(cells[5].textContent.trim().replace('€', '').replace(/\./g, '').replace(',', '.'));
 
-            const provisionBruttoText = provisionBruttoCell.textContent.trim();
-            const provisionBrutto = parseFloat(provisionBruttoText.replace('€', '').replace(/\./g, '').replace(',', '.').trim());
-            console.log(`Parsed Data: Date=${abrechnungsdatum.toLocaleDateString()}, Volumen=${ermVolumen}, Provision=${provisionBrutto}`);
+            if (isNaN(ermVolumen) || isNaN(provisionBrutto) || isNaN(abrechnungsdatum.getTime())) {
+                return null; // Invalid data
+            }
+            return { abrechnungsdatum, ermVolumen, provisionBrutto };
+        } catch (e) {
+            console.warn("Could not parse row:", row, e);
+            return null;
+        }
+    };
 
+    // --- Helper function to append the new cells to a row ---
+    const appendCalculatedCells = (row, offeneProvision, offenesVolumen, verdientBisString) => {
+        const provisionNettoCell = row.cells[7];
+        if (!provisionNettoCell) return;
 
-            // --- 2. Perform Calculations ---
-            const startDate = new Date(abrechnungsdatum);
+        const offeneProvisionCell = document.createElement('td');
+        offeneProvisionCell.textContent = offeneProvision.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+        offeneProvisionCell.style.textAlign = 'right';
+
+        const offenesVolumenCell = document.createElement('td');
+        offenesVolumenCell.textContent = offenesVolumen.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+        offenesVolumenCell.style.textAlign = 'right';
+
+        const verdientBisCell = document.createElement('td');
+        verdientBisCell.textContent = verdientBisString;
+
+        provisionNettoCell.insertAdjacentElement('afterend', verdientBisCell);
+        provisionNettoCell.insertAdjacentElement('afterend', offenesVolumenCell);
+        provisionNettoCell.insertAdjacentElement('afterend', offeneProvisionCell);
+    };
+
+    // --- 2. Process Data Rows ---
+    const dataRows = commissionTable.querySelectorAll('.tableRowOdd, .tableRowEven');
+    console.log(`Found ${dataRows.length} data rows to process.`);
+
+    for (let i = 0; i < dataRows.length; i++) {
+        const currentRow = dataRows[i];
+
+        // Skip this row if it was already handled as the second part of a cancellation pair
+        if (currentRow.dataset.isHandled) {
+            console.log(`--- Skipping Row ${i + 1} as it was handled as part of a storno ---`);
+            continue;
+        }
+        console.log(`--- Processing Row ${i + 1} ---`);
+        const currentData = parseRowData(currentRow);
+        if (!currentData) continue;
+
+        // --- Look ahead to the next row to check for a cancellation pair ---
+        let isStornoPair = false;
+        if (i + 1 < dataRows.length) {
+            const nextRow = dataRows[i + 1];
+            const nextData = parseRowData(nextRow);
+
+            // Storno condition: next row's provision is the exact negative of the current row's
+            if (nextData && currentData.provisionBrutto > 0 && Math.abs(currentData.provisionBrutto + nextData.provisionBrutto) < 0.01) {
+                console.log(`Found a storno pair: Row ${i + 1} and Row ${i + 2}.`);
+                isStornoPair = true;
+
+                const stornoDate = nextData.abrechnungsdatum.toLocaleDateString('de-DE', {
+                    day: '2-digit', month: '2-digit', year: 'numeric'
+                });
+
+                // Process both rows of the pair now
+                appendCalculatedCells(currentRow, 0, 0, stornoDate);
+                appendCalculatedCells(nextRow, 0, 0, stornoDate);
+                nextRow.dataset.isHandled = true; // Mark the next row to be skipped in the loop
+            }
+        }
+
+        // --- If it's not a storno, process as a normal row ---
+        if (!isStornoPair) {
+            const startDate = new Date(currentData.abrechnungsdatum);
             startDate.setMonth(startDate.getMonth() + 1); // Vesting starts 1 month after the date
 
             const today = new Date();
             const monthsPassed = (today.getFullYear() - startDate.getFullYear()) * 12 + (today.getMonth() - startDate.getMonth());
             const monthsRemaining = Math.max(0, 60 - monthsPassed);
 
-            const offeneProvision = (provisionBrutto / 60) * monthsRemaining;
-            const offenesVolumen = (ermVolumen / 60) * monthsRemaining;
+            const offeneProvision = (currentData.provisionBrutto / 60) * monthsRemaining;
+            const offenesVolumen = (currentData.ermVolumen / 60) * monthsRemaining;
 
-            const verdientBisDate = new Date(abrechnungsdatum);
-            verdientBisDate.setMonth(verdientBisDate.getMonth() + 60); // 60 months after the Abrechnungsdatum
+            const verdientBisDate = new Date(currentData.abrechnungsdatum);
+            verdientBisDate.setMonth(verdientBisDate.getMonth() + 60);
             const verdientBisString = verdientBisDate.toLocaleDateString('de-DE', {
                 day: '2-digit', month: '2-digit', year: 'numeric'
             });
-            console.log(`Calculations: Months Remaining=${monthsRemaining}, Offene Provision=${offeneProvision.toFixed(2)}`);
 
-
-            // --- 3. Create and Append New Cells to the Row ---
-            const offeneProvisionCell = document.createElement('td');
-            offeneProvisionCell.textContent = offeneProvision.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
-            offeneProvisionCell.style.textAlign = 'right';
-
-            const offenesVolumenCell = document.createElement('td');
-            offenesVolumenCell.textContent = offenesVolumen.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
-            offenesVolumenCell.style.textAlign = 'right';
-
-            const verdientBisCell = document.createElement('td');
-            verdientBisCell.textContent = verdientBisString;
-
-            // Insert new cells after the "Provision (netto)" cell
-            provisionNettoCell.insertAdjacentElement('afterend', verdientBisCell);
-            provisionNettoCell.insertAdjacentElement('afterend', offenesVolumenCell);
-            provisionNettoCell.insertAdjacentElement('afterend', offeneProvisionCell);
-
-            console.log("Successfully created and appended new cells for this row.");
-        } else {
-            console.warn("Could not find all required data cells in this row:", row);
+            console.log(`Normal row calculation: Months Remaining=${monthsRemaining}, Offene Provision=${offeneProvision.toFixed(2)}`);
+            appendCalculatedCells(currentRow, offeneProvision, offenesVolumen, verdientBisString);
         }
-    });
+    }
 
     console.log("--- Script finished processing all rows. ---");
 
-})(); // --- End of Script ---
+})();
