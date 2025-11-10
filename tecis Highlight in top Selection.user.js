@@ -33,6 +33,7 @@
 
             {name: "763189 Dewei Zheng", color: "rgb(156 118 222)"},
             {name: "749545 Marko Yi Wei Chen", color: "rgb(156 118 222 / 50%)"},
+            {name: "739827 Mikayel Martikyan", color: "rgb(156 118 222 / 50%)"},
 
             {name: "758298 Philipp Bronckhorst", color: "rgb(255 186 79)"},
             {name: "751463 Thilo Urban", color: "rgb(255 186 79)"},
