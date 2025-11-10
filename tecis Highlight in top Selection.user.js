@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         tecis Highlight in TopList
 // @namespace    http://tampermonkey.net/
-// @version      0.4
+// @version      0.5
 // @updateURL    https://mopoliti.de/Userscripts/tecis%20Highlight%20in%20top%20Selection.user.js
 // @description  Highlights my team in the TopList Ranking with a background color
 // @author       Malte Kretzschmar
