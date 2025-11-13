@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         tecis Autoselect TopList
+// @name         tecis tiS Autoselect TopList
 // @namespace    http://tampermonkey.net/
-// @version      0.3
+// @version      0.4
 // @updateURL    https://mopoliti.de/Userscripts/tecis%20Autoselect%20TopList.user.js
 // @description  Add Buttons to autoselect the correct Top-List
 // @author       Malte Kretzschmar
@@ -20,8 +20,7 @@
 
             let selectables = [
                 {name: "UBR Voss", value: 1300},
-                {name: "GM Mertz", value: 172},
-                {name: "Team Mertz", value: 171},
+                {name: "Team Schumacher", value: 611},
                 {name: "tecis gesamt", value: 0},
             ];
 

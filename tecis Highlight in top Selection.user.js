@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         tecis Highlight in TopList
 // @namespace    http://tampermonkey.net/
-// @version      0.5
+// @version      0.6
 // @updateURL    https://mopoliti.de/Userscripts/tecis%20Highlight%20in%20top%20Selection.user.js
 // @description  Highlights my team in the TopList Ranking with a background color
 // @author       Malte Kretzschmar
@@ -32,6 +32,7 @@
             {name: "763339 Stella Wolf", color: "rgb(67 204 84 / 50%)"},
 
             {name: "763189 Dewei Zheng", color: "rgb(156 118 222)"},
+            {name: "745645 Jan Luca Willms", color: "rgb(156 118 222 / 50%)"},
             {name: "749545 Marko Yi Wei Chen", color: "rgb(156 118 222 / 50%)"},
             {name: "739827 Mikayel Martikyan", color: "rgb(156 118 222 / 50%)"},
 
