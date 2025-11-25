@@ -177,6 +177,39 @@
     const isAutoFill = (qs.get('autofill') || '').toLowerCase() === 'true';
     if(!isAutoFill) return;
 
+    // ------- Overlay Helper -------
+    function showOverlay() {
+        const overlayId = 'autofill-loading-overlay';
+        if (document.getElementById(overlayId)) return;
+        const div = document.createElement('div');
+        div.id = overlayId;
+        div.style.cssText = `
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.85); z-index: 999999;
+            display: flex; justify-content: center; align-items: center;
+            flex-direction: column; font-family: sans-serif;
+        `;
+        const text = document.createElement('div');
+        text.innerText = "Gesprächsnotiz wird vorausgefüllt";
+        text.style.cssText = "font-size: 24px; color: #333; margin-bottom: 20px;";
+        div.appendChild(text);
+
+        // Simple spinner
+        const spinner = document.createElement('div');
+        spinner.style.cssText = "border: 5px solid #f3f3f3; border-top: 5px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite;";
+        const style = document.createElement('style');
+        style.innerHTML = "@keyframes spin {0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); }}";
+        div.appendChild(style);
+        div.appendChild(spinner);
+
+        document.body.appendChild(div);
+    }
+
+    function removeOverlay() {
+        const div = document.getElementById('autofill-loading-overlay');
+        if (div) div.remove();
+    }
+
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
     function decodeBase64Url(b64) {
@@ -215,6 +248,20 @@
                                     : JSON.parse(res.responseText || '{}');
                                 resolve(data);
                             } else {
+                                // Specific 500 error check
+                                if (res.status === 500) {
+                                    try {
+                                        const errData = (res.response && typeof res.response === 'object')
+                                            ? res.response
+                                            : JSON.parse(res.responseText || '{}');
+                                        if (errData.errorType === "HAUSHALT_NOT_ACTIVE") {
+                                            const customErr = new Error("HAUSHALT_NOT_ACTIVE");
+                                            customErr.isHaushaltNotActive = true;
+                                            reject(customErr);
+                                            return;
+                                        }
+                                    } catch(e) { /* ignore parse error */ }
+                                }
                                 reject(new Error(`HTTP ${res.status} for ${url}`));
                             }
                         } catch (err) { reject(err); }
@@ -229,7 +276,20 @@
                     body,
                     credentials: withCredentials ? 'include' : 'same-origin'
                 }).then(async (r) => {
-                    if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
+                    if (!r.ok) {
+                        // Specific 500 error check for fetch
+                        if (r.status === 500) {
+                            try {
+                                const errData = await r.clone().json();
+                                if (errData.errorType === "HAUSHALT_NOT_ACTIVE") {
+                                    const customErr = new Error("HAUSHALT_NOT_ACTIVE");
+                                    customErr.isHaushaltNotActive = true;
+                                    throw customErr;
+                                }
+                            } catch(e) { if(e.isHaushaltNotActive) throw e; /* ignore parse error */ }
+                        }
+                        throw new Error(`HTTP ${r.status} for ${url}`);
+                    }
                     resolve(await r.json());
                 }).catch(reject);
             }
@@ -554,6 +614,7 @@
     if (!isAutoFill) return;
 
     async function run() {
+        showOverlay(); // Show loading overlay
         try {
             // 1) Decode wibiid from URL
             const wibiidB64 = qs.get('wibiid') || '';
@@ -572,17 +633,6 @@
 
             console.log(`${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`);
             const tasks = [
-                // --- NEW SPATIAL FIELDS ---
-                {
-                    field: 'FinanzenHH_Aenderungen_Radio',
-                    staticValue: true,
-                    position: 'left'
-                },
-                {
-                    field: 'pep',
-                    staticValue: true,
-                    position: 'left'
-                },
                 // --- EXISTING FIELDS ---
                 {
                     field: 'Profilierung_Kenntnisse_Chbx_Geldmarktfonds',
@@ -675,7 +725,17 @@
                     field: 'FinanzenHH_Verbindlichkeiten',
                     url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvVermoegenUndVerbindlichkeiten&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
                     needle: 'clusterDto.verbindlichkeiten'
-                }
+                },
+                {
+                    field: 'FinanzenHH_Aenderungen_Radio',
+                    staticValue: true,
+                    position: 'right'
+                },
+                {
+                    field: 'pep',
+                    staticValue: true,
+                    position: 'left'
+                },
             ];
 
             // --- LOGGING NON-AUTOFILLED FIELDS ---
@@ -717,6 +777,10 @@
                     // Pass position to API-based tasks too
                     await fn(pageData, t.field, t.url, t.needle, t.position);
                 } catch (err) {
+                    // Check if this error was marked as HAUSHALT_NOT_ACTIVE
+                    if (err.isHaushaltNotActive) {
+                        throw err; // Stop the loop and propagate to outer catch
+                    }
                     console.error(`Failed to set field "${t.field}" from ${t.url} (${t.needle}):`, err);
                 }
             }
@@ -731,12 +795,20 @@
                 await window.setFieldByIdResolvedValue(pageData, 'FinanzenHH_Ueberschuss_Monat', diff);
                 console.log(`Calculated Ueberschuss: ${inc} - ${exp} = ${diff}`);
             } catch (calcErr) {
+                if (calcErr.isHaushaltNotActive) throw calcErr;
                 console.error("Calculation for FinanzenHH_Ueberschuss_Monat failed:", calcErr);
             }
 
         } catch (e) {
+            removeOverlay();
+            if (e && e.isHaushaltNotActive) {
+                alert("Daten nicht verfügbar, bitte Haushalt erst im Startkonzept öffenen und ein Gespräch starten");
+                return;
+            }
             console.error('Autofill script error:', e);
             alert('Autofill Fehler: ' + (e && e.message ? e.message : e));
+        } finally {
+            removeOverlay();
         }
     }
 
