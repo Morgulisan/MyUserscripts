@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BP Editor Autofill (wibiid)
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.3
 // @updateURL    https://mopoliti.de/Userscripts/BM%20Autofill%202%20von%202.user.js
 // @description  Autofill fields in BP editor using API data when ?autofill=true is present
 // @author       Malte Kretzschmar
@@ -19,6 +19,7 @@
     // ------- Small utilities -------
     const qs = new URLSearchParams(window.location.search);
     const isAutoFill = (qs.get('autofill') || '').toLowerCase() === 'true';
+    if(!isAutoFill) return;
 
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
@@ -116,25 +117,39 @@
             }
         }
         // ---------------------------------------------------------------------------
-        //setFieldByIdResolvedValue(pageData, "Nachhaltigkeit_Beruecksichtigung", "Nein"); fix
 
-        function findJsonField(allJson, fieldId, valueForRadio){
+        function findJsonField(allJson, fieldId, valueForRadio, position){
             const pages = getAllPages(allJson);
-            let best = null;
+            let candidates = [];
+
             for (const page of pages){
                 for (const f of asArray(page.fields)){
                     if (!f || f.id !== fieldId) continue;
+
+                    // Logic for specific radio values (legacy support)
                     const type = (f.t || '').toLowerCase();
-                    if (type === 'radio' && valueForRadio != null){
+                    if (type === 'radio' && valueForRadio != null && !position){
                         if (String(f.valchecked) === String(translatFacts(valueForRadio))) return {page, field: f};
-                        best = best || {page, field: f};
-                    } else {
-                        return {page, field: f};
                     }
+
+                    candidates.push({page, field: f});
                 }
             }
-            if (best) return best;
-            throw new Error(`Field id "${fieldId}" not found in any page`);
+
+            if (!candidates.length) throw new Error(`Field id "${fieldId}" not found in any page`);
+
+            // Check for spatial requirements
+            if (position === 'left') {
+                candidates.sort((a, b) => (a.field.x || 0) - (b.field.x || 0));
+                return candidates[0];
+            }
+            if (position === 'right') {
+                candidates.sort((a, b) => (b.field.x || 0) - (a.field.x || 0));
+                return candidates[0];
+            }
+
+            // Default (first found)
+            return candidates[0];
         }
 
         function getEedPageByNumber(pageNumber) {
@@ -236,7 +251,7 @@
             };
         }
 
-        function coordsMatch(el, target, tol=1.8){
+        function coordsMatch(el, target, tol=3.8){
             const left = parsePx(el.style.left);
             const top  = parsePx(el.style.top);
             const w    = parsePx(el.style.width);
@@ -358,8 +373,9 @@
             await sleep(10);
         }
 
-        async function setFieldByIdResolvedValue(allJson, fieldId, value){
-            const {page, field} = findJsonField(allJson, fieldId, value);
+        // Updated signature to accept position
+        window.setFieldByIdResolvedValue = async function(allJson, fieldId, value, position){
+            const {page, field} = findJsonField(allJson, fieldId, value, position);
             const {node} = await findDomNodeForField(page, field);
 
             const type = (field.t || '').toLowerCase();
@@ -368,15 +384,15 @@
             if (type === 'radio')    return setRadio(node);
 
             throw new Error(`Unsupported field type "${field.t}" for id "${fieldId}"`);
-        }
-
-        window.setFieldById = async function(allJson, fieldId, url, needle){
-            const json = await gmFetchJson(url, { withCredentials: true });
-            const value = getByPath(json, needle);
-            return setFieldByIdResolvedValue(allJson, fieldId, value);
         };
 
-        console.log('%c[EED helper] Ready: setFieldById(allJson, fieldId, url, needle)','color:#0a0;font-weight:bold;');
+        window.setFieldById = async function(allJson, fieldId, url, needle, position){
+            const json = await gmFetchJson(url, { withCredentials: true });
+            const value = getByPath(json, needle);
+            return window.setFieldByIdResolvedValue(allJson, fieldId, value, position);
+        };
+
+        console.log('%c[EED helper] Ready: setFieldById(allJson, fieldId, url, needle, position)','color:#0a0;font-weight:bold;');
     })();
 
     if (!isAutoFill) return;
@@ -396,7 +412,22 @@
 
             // 4) Mappings
             const apiBase = 'https://startkonzept.bp.vertrieb-plattform.de/api';
+
+
+            console.log(`${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`);
             const tasks = [
+                // --- NEW SPATIAL FIELDS ---
+                {
+                    field: 'FinanzenHH_Aenderungen_Radio',
+                    staticValue: true,
+                    position: 'left'
+                },
+                {
+                    field: 'pep',
+                    staticValue: true,
+                    position: 'left'
+                },
+                // --- EXISTING FIELDS ---
                 {
                     field: 'Profilierung_Kenntnisse_Chbx_Geldmarktfonds',
                     url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
@@ -450,20 +481,23 @@
                     value: 1,
                 },
                 {
+                    field: 'Nachhaltigkeit_Beruecksichtigung',
+                    staticValue: true, // Assuming check
+                    position: 'right'
+                },
+                {
                     field: 'FinanzenHH_Einkommen_Monat',
-                    // FIX: added missing '/' before clusters
                     url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvLaufendeEinnahmenUndAusgaben&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
                     needle: 'clusterDto.monatlicheNettoeinnahmen',
                 },
                 {
                     field: 'FinanzenHH_Ausgaben_Monat',
-                    // FIX: added missing '/' before clusters
                     url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvLaufendeEinnahmenUndAusgaben&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
                     needle: 'clusterDto.monatlicheAusgaben',
                 },
                 {
                     field: 'FinanzenHH_Ueberschuss_Monat',
-                    // handled manually below (local calculation)
+                    // Skipped here, handled in calculation block below
                     skip: true
                 },
                 {
@@ -488,6 +522,23 @@
                 }
             ];
 
+            // --- LOGGING NON-AUTOFILLED FIELDS ---
+            const allFieldIds = [];
+            (pageData.pages || []).forEach(p => {
+                const fields = Array.isArray(p.fields) ? p.fields : Object.values(p.fields || {});
+                fields.forEach(f => { if (f && f.id) allFieldIds.push(f.id); });
+            });
+
+            const filledIds = new Set(tasks.map(t => t.field));
+            const notFilled = allFieldIds.filter(id => !filledIds.has(id));
+
+            console.group("Fields NOT Autofilled");
+            console.log("Total fields found:", allFieldIds.length);
+            console.log("Total fields filled:", filledIds.size);
+            console.log("List of unfilled fields:", notFilled);
+            console.groupEnd();
+            // -------------------------------------
+
             // 5) gewünschte 1s-VerzögerungO
             await sleep(1000);
 
@@ -495,15 +546,36 @@
             for (const t of tasks) {
                 try {
                     if (t.skip) continue;
+
+                    // Allow static values (no API call)
+                    if (t.staticValue !== undefined) {
+                        await window.setFieldByIdResolvedValue(pageData, t.field, t.staticValue, t.position);
+                        continue;
+                    }
+
                     const fn = (typeof window.setFieldById === 'function') ? window.setFieldById : null;
                     if (!fn) {
                         console.warn('Skipping task because setFieldById is not available:', t);
                         continue;
                     }
-                    await fn(pageData, t.field, t.url, t.needle);
+                    // Pass position to API-based tasks too
+                    await fn(pageData, t.field, t.url, t.needle, t.position);
                 } catch (err) {
                     console.error(`Failed to set field "${t.field}" from ${t.url} (${t.needle}):`, err);
                 }
+            }
+
+            // 7) Special Calculation: Ueberschuss
+            try {
+                const finUrl = `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvLaufendeEinnahmenUndAusgaben&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`;
+                const finJson = await gmFetchJson(finUrl, { withCredentials: true });
+                const inc = parseFloat(getByPath(finJson, 'clusterDto.monatlicheNettoeinnahmen')) || 0;
+                const exp = parseFloat(getByPath(finJson, 'clusterDto.monatlicheAusgaben')) || 0;
+                const diff = inc - exp;
+                await window.setFieldByIdResolvedValue(pageData, 'FinanzenHH_Ueberschuss_Monat', diff);
+                console.log(`Calculated Ueberschuss: ${inc} - ${exp} = ${diff}`);
+            } catch (calcErr) {
+                console.error("Calculation for FinanzenHH_Ueberschuss_Monat failed:", calcErr);
             }
 
         } catch (e) {

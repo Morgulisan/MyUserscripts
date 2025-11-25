@@ -13,7 +13,7 @@
     'use strict';
 
     // --- Start of Script ---
-    console.log("Commission Table Enhancer script started (v0.4).");
+    console.log("Commission Table Enhancer script started (v0.5).");
 
     const commissionTable = document.querySelector('table > tbody > tr > td > table[width="100%"]');
 
@@ -55,11 +55,13 @@
             const [day, month, year] = abrechnungsdatumText.split('.').map(Number);
             const abrechnungsdatum = new Date(year, month - 1, day);
 
+            // Handle German number formats (e.g., -4.791,91)
             const ermVolumen = parseFloat(cells[3].textContent.trim().replace('€', '').replace(/\./g, '').replace(',', '.'));
             const provisionBrutto = parseFloat(cells[5].textContent.trim().replace('€', '').replace(/\./g, '').replace(',', '.'));
 
             if (isNaN(ermVolumen) || isNaN(provisionBrutto) || isNaN(abrechnungsdatum.getTime())) {
-                return null; // Invalid data
+                console.warn("Invalid data in row, skipping parse:", row);
+                return null;
             }
             return { abrechnungsdatum, ermVolumen, provisionBrutto };
         } catch (e) {
@@ -90,13 +92,12 @@
     };
 
     // --- 2. Process Data Rows ---
-    const dataRows = commissionTable.querySelectorAll('.tableRowOdd, .tableRowEven');
+    const dataRows = Array.from(commissionTable.querySelectorAll('.tableRowOdd, .tableRowEven'));
     console.log(`Found ${dataRows.length} data rows to process.`);
 
     for (let i = 0; i < dataRows.length; i++) {
         const currentRow = dataRows[i];
 
-        // Skip this row if it was already handled as the second part of a cancellation pair
         if (currentRow.dataset.isHandled) {
             console.log(`--- Skipping Row ${i + 1} as it was handled as part of a storno ---`);
             continue;
@@ -105,37 +106,44 @@
         const currentData = parseRowData(currentRow);
         if (!currentData) continue;
 
-        // --- Look ahead to the next row to check for a cancellation pair ---
         let isStornoPair = false;
         if (i + 1 < dataRows.length) {
             const nextRow = dataRows[i + 1];
             const nextData = parseRowData(nextRow);
 
-            // Storno condition: next row's provision is the exact negative of the current row's
-            if (nextData && currentData.provisionBrutto > 0 && Math.abs(currentData.provisionBrutto + nextData.provisionBrutto) < 0.01) {
+            // *** FIX: Check for exact opposite values, regardless of which is positive or negative ***
+            // Using a small tolerance (0.01) for floating point comparisons
+            const isMatchingPair = nextData &&
+                Math.abs(currentData.provisionBrutto + nextData.provisionBrutto) < 0.01 &&
+                Math.abs(currentData.ermVolumen + nextData.ermVolumen) < 0.01;
+
+            if (isMatchingPair) {
                 console.log(`Found a storno pair: Row ${i + 1} and Row ${i + 2}.`);
                 isStornoPair = true;
 
-                const stornoDate = nextData.abrechnungsdatum.toLocaleDateString('de-DE', {
+                // *** FIX: Use the LATER of the two dates as the cancellation date ***
+                const finalDate = currentData.abrechnungsdatum > nextData.abrechnungsdatum ? currentData.abrechnungsdatum : nextData.abrechnungsdatum;
+                const stornoDateString = finalDate.toLocaleDateString('de-DE', {
                     day: '2-digit', month: '2-digit', year: 'numeric'
                 });
 
-                // Process both rows of the pair now
-                appendCalculatedCells(currentRow, 0, 0, stornoDate);
-                appendCalculatedCells(nextRow, 0, 0, stornoDate);
-                nextRow.dataset.isHandled = true; // Mark the next row to be skipped in the loop
+                // Set both rows of the pair to have 0 open commission and the same end date
+                appendCalculatedCells(currentRow, 0, 0, stornoDateString);
+                appendCalculatedCells(nextRow, 0, 0, stornoDateString);
+                nextRow.dataset.isHandled = true; // Mark the next row to be skipped
             }
         }
 
-        // --- If it's not a storno, process as a normal row ---
+        // --- If it's not part of a storno pair, process as a normal row ---
         if (!isStornoPair) {
             const startDate = new Date(currentData.abrechnungsdatum);
-            startDate.setMonth(startDate.getMonth() + 1); // Vesting starts 1 month after the date
+            startDate.setMonth(startDate.getMonth() + 1);
 
             const today = new Date();
             const monthsPassed = (today.getFullYear() - startDate.getFullYear()) * 12 + (today.getMonth() - startDate.getMonth());
             const monthsRemaining = Math.max(0, 60 - monthsPassed);
 
+            // Handle negative provisions correctly in the standard calculation
             const offeneProvision = (currentData.provisionBrutto / 60) * monthsRemaining;
             const offenesVolumen = (currentData.ermVolumen / 60) * monthsRemaining;
 
