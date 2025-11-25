@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         BM Gesprächsnotiz Autofill
+// @name         tecis BM Gesprächsnotiz Autofill
 // @namespace    http://tampermonkey.net/
-// @version      2.0.0
+// @version      2.0.1
 // @description  Befüllt die Gesprächsnotiz wenn ?autofill=true gesetzt ist und fügt einen Autofill button in der BM hinzu
 // @author       Malte Kretzschmar
 // @match        https://bm.bp.vertrieb-plattform.de/bm/?wibiid=*
@@ -12,6 +12,11 @@
 // @connect      startkonzept.bp.vertrieb-plattform.de
 // @connect      mopoliti.de
 // @run-at       document-start
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
+// @downloadURL  https://mopoliti.de/Userscripts/tecis%20BM%20Gespraechsnotiz%20Autofill.user.js
+// @updateURL    https://mopoliti.de/Userscripts/tecis%20BM%20Gespraechsnotiz%20Autofill.user.js
+// @homepageURL  https://mopoliti.de/Userscripts/
+// @supportURL   https://mopoliti.de/Userscripts/
 // ==/UserScript==
 
 (function () {
