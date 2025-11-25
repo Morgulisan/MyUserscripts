@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         tecis BM Gesprächsnotiz Autofill
 // @namespace    http://tampermonkey.net/
-// @version      2.0.4
+// @version      2.0.5
 // @description  Befüllt die Gesprächsnotiz wenn ?autofill=true gesetzt ist und fügt einen Autofill button in der BM hinzu
 // @author       Malte Kretzschmar
-// @match        https://bm.bp.vertrieb-plattform.de/bm/?wibiid=*
+// @match        https://bm.bp.vertrieb-plattform.de/bm/*
 // @match        https://bm.bp.vertrieb-plattform.de/edocbox/editor/ui/?documentid=*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
@@ -18,9 +18,16 @@
 // @supportURL   https://mopoliti.de/Userscripts/
 // ==/UserScript==
 
+
 // ===== Gesprächsnotiz: clone Bearbeiten with Autofill =====
 (function () {
     "use strict";
+
+    // Only run this block on the BM list page
+    if (!location.href.startsWith("https://bm.bp.vertrieb-plattform.de/bm/")) return;
+
+    // Use the real page window (like @grant none would)
+    const pageWindow = (typeof unsafeWindow !== "undefined") ? unsafeWindow : window;
 
     // -------- URL param helpers --------
     let addAutofillNextOpen = false; // one-shot flag for the next window.open()
@@ -51,8 +58,8 @@
     }
 
     // -------- Intercept window.open (covers PrimeFaces flows) --------
-    const _open = window.open;
-    Object.defineProperty(window, "open", {
+    const _open = pageWindow.open;
+    Object.defineProperty(pageWindow, "open", {
         configurable: true,
         writable: true,
         value: function (url, name, specs, replace) {
@@ -157,9 +164,13 @@
     }
 })();
 
+
 // ===== BP Editor Autofill (wibiid) =====
 (function () {
     'use strict';
+
+    // Only run this block on the editor UI
+    if (!location.href.startsWith("https://bm.bp.vertrieb-plattform.de/edocbox/editor/ui/")) return;
 
     // ------- Small utilities -------
     const qs = new URLSearchParams(window.location.search);
