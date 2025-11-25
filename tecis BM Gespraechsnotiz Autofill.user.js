@@ -12,6 +12,7 @@
 // @connect      bm.bp.vertrieb-plattform.de
 // @connect      startkonzept.bp.vertrieb-plattform.de
 // @connect      mopoliti.de
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
 // @downloadURL  https://mopoliti.de/Userscripts/tecis%20BM%20Gespraechsnotiz%20Autofill.user.js
 // @updateURL    https://mopoliti.de/Userscripts/tecis%20BM%20Gespraechsnotiz%20Autofill.user.js
 // @homepageURL  https://mopoliti.de/Userscripts/
@@ -634,6 +635,11 @@
             console.log(`${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`);
             const tasks = [
                 // --- EXISTING FIELDS ---
+                {
+                    field: 'Angaben_zum_Gespraech_Beruf1',
+                    url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=KundeStammdaten&clusterId=0140d6ba-3c7d-4ee3-a918-fa30af996043`,
+                    needle: 'clusterDto.beruf'
+                },
                 {
                     field: 'Profilierung_Kenntnisse_Chbx_Geldmarktfonds',
                     url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
