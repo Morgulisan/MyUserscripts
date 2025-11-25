@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         tecis BM Gesprächsnotiz Autofill
 // @namespace    http://tampermonkey.net/
-// @version      2.0.5
+// @version      2.0.6
 // @description  Befüllt die Gesprächsnotiz wenn ?autofill=true gesetzt ist und fügt einen Autofill button in der BM hinzu
 // @author       Malte Kretzschmar
 // @match        https://bm.bp.vertrieb-plattform.de/bm/*
@@ -797,6 +797,37 @@
             } catch (calcErr) {
                 if (calcErr.isHaushaltNotActive) throw calcErr;
                 console.error("Calculation for FinanzenHH_Ueberschuss_Monat failed:", calcErr);
+            }
+
+            // 8) Signature Fields: Ort + Date
+            try {
+                // Fetch the City
+                const stammdatenUrl = `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=KundeStammdaten&clusterId=0140d6ba-3c7d-4ee3-a918-fa30af996043`;
+                const stammdatenJson = await gmFetchJson(stammdatenUrl, { withCredentials: true });
+                const city = getByPath(stammdatenJson, 'clusterDto.ort') || '';
+
+                // Generate German Date DD.MM.YYYY
+                const now = new Date();
+                const dateStr = now.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+                const signatureValue = city ? `${city}, ${dateStr}` : dateStr;
+
+                const sigFields = [
+                    'Unterschriften_Ort_Dat',
+                    'Unterschriften_Ort_Dat-1-',
+                    'Unterschriften_Ort_Dat-2-'
+                ];
+
+                for (const fId of sigFields) {
+                    try {
+                        await window.setFieldByIdResolvedValue(pageData, fId, signatureValue);
+                    } catch (e) {
+                        console.log(`Signature field ${fId} not found or skipped`, e.message);
+                    }
+                }
+            } catch (sigErr) {
+                if (sigErr.isHaushaltNotActive) throw sigErr;
+                console.error("Signature location/date autofill failed:", sigErr);
             }
 
         } catch (e) {
