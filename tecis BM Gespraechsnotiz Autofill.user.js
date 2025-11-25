@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         tecis BM Gesprächsnotiz Autofill
 // @namespace    http://tampermonkey.net/
-// @version      2.0.7
+// @version      2.0.8
 // @description  Befüllt die Gesprächsnotiz wenn ?autofill=true gesetzt ist und fügt einen Autofill button in der BM hinzu
 // @author       Malte Kretzschmar
 // @match        https://bm.bp.vertrieb-plattform.de/bm/*
@@ -213,7 +213,7 @@
         div.id = overlayId;
         div.style.cssText = `
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(255, 255, 255, 0.85); z-index: 999999;
+            background: rgba(255, 255, 255, 0.75); z-index: 999999;
             display: flex; justify-content: center; align-items: center;
             flex-direction: column; font-family: sans-serif;
         `;
@@ -522,20 +522,48 @@
             return Array.from(pageEl.querySelectorAll('.formfield'));
         }
 
-        async function findDomNodeForField(pageJson, fieldEntry){
+        async function findDomNodeForField(pageJson, fieldEntry) {
             const pageEl = await revealPage(pageJson.page);
             pageEl.scrollIntoView({block: 'center', behavior: 'auto'});
-            await sleep(40);
 
-            const scale = getPageScale(pageEl, pageJson.width);
-            const target = computeTargetRect(fieldEntry, scale);
+            // We use MutationObserver to wait for the field to appear instead of a fixed polling loop.
+            return new Promise((resolve, reject) => {
+                const tryFind = () => {
+                    try {
+                        const scale = getPageScale(pageEl, pageJson.width);
+                        const target = computeTargetRect(fieldEntry, scale);
+                        const matches = getFormfields(pageEl).filter(ff => coordsMatch(ff, target));
+                        if (matches.length) return matches[0];
+                    } catch (e) {
+                        // Page or scale might not be ready yet
+                    }
+                    return null;
+                };
 
-            for (let tries=0; tries<50; tries++){
-                const matches = getFormfields(pageEl).filter(ff => coordsMatch(ff, target));
-                if (matches.length) return {node: matches[0], pageEl};
-                await sleep(50);
-            }
-            throw new Error(`Formfield at (${target.left.toFixed(1)},${target.top.toFixed(1)}) not found on page ${pageJson.page}`);
+                // 1. Immediate Check
+                const found = tryFind();
+                if (found) {
+                    resolve({node: found, pageEl});
+                    return;
+                }
+
+                // 2. Change Detection
+                const observer = new MutationObserver(() => {
+                    const node = tryFind();
+                    if (node) {
+                        observer.disconnect();
+                        resolve({node, pageEl});
+                    }
+                });
+
+                observer.observe(pageEl, { childList: true, subtree: true, attributes: true });
+
+                // 3. Timeout fallback (.5 seconds)
+                setTimeout(() => {
+                    observer.disconnect();
+                    reject(new Error(`Formfield at specified coordinates not found on page ${pageJson.page} (Timeout)`));
+                }, 500);
+            });
         }
 
         async function getActionElement(wrapperEl){
