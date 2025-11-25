@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         tecis BM Gesprächsnotiz Autofill
 // @namespace    http://tampermonkey.net/
-// @version      2.0.6
+// @version      2.0.7
 // @description  Befüllt die Gesprächsnotiz wenn ?autofill=true gesetzt ist und fügt einen Autofill button in der BM hinzu
 // @author       Malte Kretzschmar
 // @match        https://bm.bp.vertrieb-plattform.de/bm/*
@@ -165,13 +165,40 @@
     }
 })();
 
-
 // ===== BP Editor Autofill (wibiid) =====
 (function () {
     'use strict';
 
     // Only run this block on the editor UI
     if (!location.href.startsWith("https://bm.bp.vertrieb-plattform.de/edocbox/editor/ui/")) return;
+
+    // ------- 0. DATA INTERCEPTION (Run immediately) -------
+    // We create a promise that resolves when the page loads its own document JSON
+    let docJsonResolve;
+    const documentJsonPromise = new Promise((resolve) => { docJsonResolve = resolve; });
+
+    // Monkey-patch XMLHttpRequest to spy on the document load
+    const originalOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function (method, url) {
+        // Check if this request is for the document viewer load action
+        // The URL usually contains "servlet/documentViewer?pAction=load"
+        if (typeof url === 'string' && url.includes('pAction=load')) {
+            this.addEventListener('load', function () {
+                try {
+                    const json = JSON.parse(this.responseText);
+                    // Simple validation to ensure it's the document definition
+                    if (json && (json.pages || json.formFields)) {
+                        console.log("Autofill: Intercepted document JSON successfully.");
+                        docJsonResolve(json);
+                    }
+                } catch (e) {
+                    console.error("Autofill: Failed to parse intercepted JSON", e);
+                }
+            });
+        }
+        return originalOpen.apply(this, arguments);
+    };
+
 
     // ------- Small utilities -------
     const qs = new URLSearchParams(window.location.search);
@@ -261,7 +288,7 @@
                                             reject(customErr);
                                             return;
                                         }
-                                    } catch(e) { /* ignore parse error */ }
+                                    } catch(e) { }
                                 }
                                 reject(new Error(`HTTP ${res.status} for ${url}`));
                             }
@@ -287,7 +314,7 @@
                                     customErr.isHaushaltNotActive = true;
                                     throw customErr;
                                 }
-                            } catch(e) { if(e.isHaushaltNotActive) throw e; /* ignore parse error */ }
+                            } catch(e) { if(e.isHaushaltNotActive) throw e; }
                         }
                         throw new Error(`HTTP ${r.status} for ${url}`);
                     }
@@ -348,11 +375,9 @@
                     if (type === 'radio' && valueForRadio != null && !position){
                         if (String(f.valchecked) === String(translatFacts(valueForRadio))) return {page, field: f};
                     }
-
                     candidates.push({page, field: f});
                 }
             }
-
             if (!candidates.length) throw new Error(`Field id "${fieldId}" not found in any page`);
 
             // Check for spatial requirements
@@ -413,15 +438,33 @@
             };
         }
 
+        function getVirtualScroller() {
+            const el = document.querySelector('cdk-virtual-scroll-viewport');
+            if (!el || !el.__ngContext__) return null;
+            for (let i = 0; i < 30; i++) {
+                const item = el.__ngContext__[i];
+                if (item && typeof item === 'object' && typeof item.scrollToIndex === 'function') {
+                    return item;
+                }
+            }
+            return null;
+        }
+
         async function revealPage(pageNumber, maxSteps=120){
             let el = getEedPageByNumber(pageNumber);
             if (el) return el;
 
-            const scroller = getScrollContainer();
+            const viewport = getVirtualScroller();
+            if (viewport) {
+                viewport.scrollToIndex(pageNumber - 1);
+                await sleep(150);
+                el = getEedPageByNumber(pageNumber);
+                if (el) return el;
+            }
 
+            const scroller = getScrollContainer();
             for (let step=0; step<maxSteps; step++){
                 const info = renderedPagesInfo();
-
                 if (!info.items.length){
                     scroller.scrollBy({top: 400, left: 0, behavior: 'auto'});
                     await sleep(30);
@@ -429,7 +472,6 @@
                     if (el) return el;
                     continue;
                 }
-
                 el = getEedPageByNumber(pageNumber);
                 if (el) return el;
 
@@ -440,7 +482,6 @@
                     else if (pageNumber < min) dir = -1;
                     else dir = 0;
                 }
-
                 const delta = (dir === 0) ? (medianHeight * 0.6) : (dir * medianHeight * 0.95);
                 scroller.scrollBy({top: delta, behavior: 'auto'});
                 await sleep(70);
@@ -483,7 +524,7 @@
 
         async function findDomNodeForField(pageJson, fieldEntry){
             const pageEl = await revealPage(pageJson.page);
-            pageEl.scrollIntoView({block: 'center'});
+            pageEl.scrollIntoView({block: 'center', behavior: 'auto'});
             await sleep(40);
 
             const scale = getPageScale(pageEl, pageJson.width);
@@ -507,10 +548,8 @@
                 const inp = mat.querySelector('input[type="checkbox"]');
                 return {kind: isRadioStyle ? 'radio' : 'checkbox', el: mat, inp};
             }
-
             input = wrapperEl.querySelector('input');
             if (input) return {kind: input.type==='checkbox' ? 'checkbox' : 'text', el: input};
-
             throw new Error('No actionable input element found inside .formfield');
         }
 
@@ -553,7 +592,6 @@
         async function setCheckbox(wrapperEl, want){
             const action = await getActionElement(wrapperEl);
             if (action.kind !== 'checkbox') throw new Error('Target is not a checkbox');
-
             const getState = () => {
                 if (action.inp) {
                     const aria = action.inp.getAttribute('aria-checked');
@@ -565,7 +603,6 @@
                 const cb = wrapperEl.querySelector('input[type="checkbox"]');
                 return !!(cb && cb.checked);
             };
-
             want = !!want;
             for (let i=0; i<2 && getState() !== want; i++){
                 clickMaterial(action.el || wrapperEl);
@@ -594,12 +631,10 @@
         window.setFieldByIdResolvedValue = async function(allJson, fieldId, value, position){
             const {page, field} = findJsonField(allJson, fieldId, value, position);
             const {node} = await findDomNodeForField(page, field);
-
             const type = (field.t || '').toLowerCase();
             if (type === 'text')     return setText(node, value);
             if (type === 'checkbox') return setCheckbox(node, !!value);
             if (type === 'radio')    return setRadio(node);
-
             throw new Error(`Unsupported field type "${field.t}" for id "${fieldId}"`);
         };
 
@@ -615,17 +650,33 @@
     if (!isAutoFill) return;
 
     async function run() {
-        showOverlay(); // Show loading overlay
+        showOverlay();
         try {
             // 1) Decode wibiid from URL
             const wibiidB64 = qs.get('wibiid') || '';
             const wibiid = decodeBase64Url(wibiidB64).trim();
 
-            // 2) Load the document JSON the page loads:
-            const docUrl = 'https://mopoliti.de/tecis/Store/AVGespraechsnotiz.php';
-            const pageData = await gmFetchJson(docUrl, { withCredentials: true });
+            // 2) Load the document JSON
+            // We race the interceptor against a timeout.
+            // If the interceptor fails/timeouts, we try a manual fetch with the documentid
+            let pageData = null;
+            try {
+                // Wait up to 5 seconds for the page to load its own document
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject("Timeout"), 5000));
+                pageData = await Promise.race([documentJsonPromise, timeoutPromise]);
+            } catch (err) {
+                console.log("Interceptor timed out or failed, trying manual fetch...");
+                // FALLBACK: Manual fetch
+                // The API needs 'documentid' (lowercase) or 'documentId'
+                const docId = qs.get('documentid');
+                if (docId) {
+                    const fallbackUrl = `https://bm.bp.vertrieb-plattform.de/edocbox/editor/servlet/documentViewer?pAction=load&documentid=${docId}`;
+                    pageData = await gmFetchJson(fallbackUrl, { withCredentials: true });
+                }
+            }
+
             if (!pageData || !Array.isArray(pageData.pages)) {
-                throw new Error('Unerwartetes Dokument-JSON: allJson.pages[] fehlt oder ist leer.');
+                throw new Error('Dokument-Daten konnten nicht geladen werden (Interception und Fallback fehlgeschlagen).');
             }
 
             // 4) Mappings
@@ -694,7 +745,7 @@
                 },
                 {
                     field: 'Nachhaltigkeit_Beruecksichtigung',
-                    staticValue: true, // Assuming check
+                    staticValue: true,
                     position: 'right'
                 },
                 {
@@ -709,7 +760,6 @@
                 },
                 {
                     field: 'FinanzenHH_Ueberschuss_Monat',
-                    // Skipped here, handled in calculation block below
                     skip: true
                 },
                 {
@@ -774,20 +824,13 @@
                         await window.setFieldByIdResolvedValue(pageData, t.field, t.staticValue, t.position);
                         continue;
                     }
-
                     const fn = (typeof window.setFieldById === 'function') ? window.setFieldById : null;
-                    if (!fn) {
-                        console.warn('Skipping task because setFieldById is not available:', t);
-                        continue;
+                    if (fn) {
+                        await fn(pageData, t.field, t.url, t.needle, t.position);
                     }
-                    // Pass position to API-based tasks too
-                    await fn(pageData, t.field, t.url, t.needle, t.position);
                 } catch (err) {
-                    // Check if this error was marked as HAUSHALT_NOT_ACTIVE
-                    if (err.isHaushaltNotActive) {
-                        throw err; // Stop the loop and propagate to outer catch
-                    }
-                    console.error(`Failed to set field "${t.field}" from ${t.url} (${t.needle}):`, err);
+                    if (err.isHaushaltNotActive) throw err;
+                    console.error(`Failed to set field "${t.field}":`, err);
                 }
             }
 
@@ -815,15 +858,9 @@
                 // Generate German Date DD.MM.YYYY
                 const now = new Date();
                 const dateStr = now.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-
                 const signatureValue = city ? `${city}, ${dateStr}` : dateStr;
 
-                const sigFields = [
-                    'Unterschriften_Ort_Dat',
-                    'Unterschriften_Ort_Dat-1-',
-                    'Unterschriften_Ort_Dat-2-'
-                ];
-
+                const sigFields = ['Unterschriften_Ort_Dat', 'Unterschriften_Ort_Dat-1-', 'Unterschriften_Ort_Dat-2-'];
                 for (const fId of sigFields) {
                     try {
                         await window.setFieldByIdResolvedValue(pageData, fId, signatureValue);

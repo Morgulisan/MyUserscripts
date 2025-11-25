@@ -9,7 +9,7 @@
 // @grant        GM_addStyle
 // @connect      mopoliti.de
 // @connect      www.crm.vertrieb-plattform.de
-// @require      https://cdn.jsdelivr.net/npm/pdf-lib/dist/pdf-lib.min.js
+// @require      https://mopoliti.de/Userscripts/libraries/pdf-lib.js
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
 // @downloadURL  https://mopoliti.de/Userscripts/tecis%20Dokumente%20Datenbank.user.js
 // @updateURL    https://mopoliti.de/Userscripts/tecis%20Dokumente%20Datenbank.user.js
@@ -39,6 +39,7 @@
         "concat_Strasse_Hausnummer" : ["$.adressen[?(@.primaer==true)].strasseHausnummer.strasse", " ", "$.adressen[?(@.primaer==true)].strasseHausnummer.hausNr"],
         "concat_PLZ_Ort" : ["$.adressen[?(@.primaer==true)].plzOrt.postleitzahl", " ", "$.adressen[?(@.primaer==true)].plzOrt.ort"],
         "concat_Name_Vorname": ["$.nachname",  ", ",  "$.vorname"],
+        "concat_Vorname_Nachname": ["$.vorname",  " ",  "$.nachname"],
     };
     // --- ⬆️ END OF EDITABLE SECTION ⬆️ ---
 
