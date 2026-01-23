@@ -19,6 +19,8 @@
     window.addEventListener("load",function (e) {
 
             let selectables = [
+                {name: "GM Voss", value: 1302},
+                {name: "UBR Handami", value: 1730},
                 {name: "UBR Voss", value: 1300},
                 {name: "Team Schumacher", value: 611},
                 {name: "tecis gesamt", value: 0},
