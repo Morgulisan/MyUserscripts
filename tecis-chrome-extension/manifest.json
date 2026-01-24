@@ -33,5 +33,11 @@
       "js": ["content/affiliate-links.js"],
       "run_at": "document_idle"
     }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["content/page-window-open-hook.js"],
+      "matches": ["https://bm.bp.vertrieb-plattform.de/bm/*"]
+    }
   ]
 }
