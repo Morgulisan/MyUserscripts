@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "tecis Userscripts Bundle",
+  "name": "Beratungsmappen Optimizer",
   "version": "1.0.0",
-  "description": "Kombiniert tecis Dokumente Datenbank, BM Gesprächsnotiz Autofill und Affiliate Links.",
+  "description": "Kombiniert Dokumente Datenbank und BM Gesprächsnotiz Autofill als Browsererweiterung.",
   "background": {
     "service_worker": "background.js"
   },
