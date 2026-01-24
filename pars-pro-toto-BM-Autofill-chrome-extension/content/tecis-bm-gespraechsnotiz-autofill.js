@@ -804,6 +804,43 @@ function extensionFetchJson(url, { method = 'GET', headers = {}, body = null, wi
                 url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvLaufendeEinnahmenUndAusgaben&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
                 needle: 'clusterDto.monatlicheAusgaben',
             },
+            // --- EINKOMMENS HERKUNFT CHECKBOXEN ---
+            {
+                field: 'FinanzenHH_Einkommen_Chbx_Gehalt',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvLaufendeEinnahmenUndAusgaben&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.herkuenfteEinnahmen',
+                contains: 'Gehalt'
+            },
+            {
+                field: 'FinanzenHH_Einkommen_Chbx_selbststTaetigk',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvLaufendeEinnahmenUndAusgaben&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.herkuenfteEinnahmen',
+                contains: 'SelbststaendigeTaetigkeit'
+            },
+            {
+                field: 'FinanzenHH_Einkommen_Chbx_Rente',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvLaufendeEinnahmenUndAusgaben&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.herkuenfteEinnahmen',
+                contains: 'Rente'
+            },
+            {
+                field: 'FinanzenHH_Einkommen_Chbx_Miete',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvLaufendeEinnahmenUndAusgaben&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.herkuenfteEinnahmen',
+                contains: 'Miete'
+            },
+            {
+                field: 'FinanzenHH_Einkommen_Chbx_Kapital',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvLaufendeEinnahmenUndAusgaben&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.herkuenfteEinnahmen',
+                contains: 'Kapital'
+            },
+            {
+                field: 'FinanzenHH_Einkommen_Chbx_Sonstiges',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvLaufendeEinnahmenUndAusgaben&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.herkuenfteEinnahmen',
+                contains: 'Sonstiges'
+            },
             {
                 field: 'FinanzenHH_Ueberschuss_Monat',
                 skip: true
@@ -860,16 +897,39 @@ function extensionFetchJson(url, { method = 'GET', headers = {}, body = null, wi
         await sleep(1000);
 
         // 6) Execute mappings
+        // Cache für API-Abfragen, damit wir nicht 6x die gleiche URL abrufen
+        const fetchCache = {};
+
         for (const t of tasks) {
             try {
                 if (t.skip) continue;
+
+                let val;
+
+                // Fall A: Statischer Wert
                 if (t.staticValue !== undefined) {
-                    await window.setFieldByIdResolvedValue(pageData, t.field, t.staticValue, t.position);
-                    continue;
+                    val = t.staticValue;
                 }
-                const fn = (typeof window.setFieldById === 'function') ? window.setFieldById : null;
-                if (fn) {
-                    await fn(pageData, t.field, t.url, t.needle, t.position);
+                // Fall B: Wert aus API laden
+                else if (t.url) {
+                    // Caching nutzen oder neu laden
+                    if (!fetchCache[t.url]) {
+                        fetchCache[t.url] = await gmFetchJson(t.url, { withCredentials: true });
+                    }
+                    const json = fetchCache[t.url];
+                    const rawVal = getByPath(json, t.needle);
+
+                    // NEU: Wenn "contains" gesetzt ist, prüfen wir, ob der Wert im Array steckt
+                    if (t.contains) {
+                        val = Array.isArray(rawVal) && rawVal.includes(t.contains);
+                    } else {
+                        // Standard Verhalten (1-zu-1)
+                        val = rawVal;
+                    }
+                }
+
+                if (val !== undefined) {
+                    await window.setFieldByIdResolvedValue(pageData, t.field, val, t.position);
                 }
             } catch (err) {
                 if (err.isHaushaltNotActive) throw err;
