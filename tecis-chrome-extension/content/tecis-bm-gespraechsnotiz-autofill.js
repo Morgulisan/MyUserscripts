@@ -1,0 +1,1033 @@
+function extensionFetchJson(url, { method = 'GET', headers = {}, body = null, withCredentials = true } = {}) {
+    return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage(
+            {
+                type: "fetchJson",
+                url,
+                options: {
+                    method,
+                    headers,
+                    body,
+                    credentials: withCredentials ? "include" : "omit"
+                }
+            },
+            (response) => {
+                if (chrome.runtime.lastError) {
+                    reject(new Error(chrome.runtime.lastError.message));
+                    return;
+                }
+                if (!response) {
+                    reject(new Error("No response from background"));
+                    return;
+                }
+                if (response.error) {
+                    reject(new Error(response.error));
+                    return;
+                }
+                if (!response.ok) {
+                    const err = new Error(`HTTP ${response.status} for ${url}`);
+                    err.status = response.status;
+                    err.data = response.data;
+                    reject(err);
+                    return;
+                }
+                resolve(response.data);
+            }
+        );
+    });
+}
+
+// ===== Gesprächsnotiz: clone Bearbeiten with Autofill =====
+(function () {
+    "use strict";
+
+    // Only run this block on the BM list page
+    if (!location.href.startsWith("https://bm.bp.vertrieb-plattform.de/bm/")) return;
+
+    // -------- URL param helpers --------
+    let addAutofillNextOpen = false; // one-shot flag for the next window.open()
+
+    function getCurrentWibiid() {
+        try { return new URL(location.href).searchParams.get("wibiid"); }
+        catch { return null; }
+    }
+
+    function isNormalUrl(u) {
+        return typeof u === "string" && !/^(?:javascript:|data:|blob:)/i.test(u);
+    }
+
+    function appendParams(u, { forceAutofill = false } = {}) {
+        if (!isNormalUrl(u)) return u;
+        let target;
+        try { target = new URL(u, location.href); }
+        catch { return u; }
+
+        const wibiid = getCurrentWibiid();
+        if (wibiid && !target.searchParams.has("wibiid")) {
+            target.searchParams.set("wibiid", wibiid);
+        }
+        if (forceAutofill) {
+            target.searchParams.set("autofill", "true");
+        }
+        return target.toString();
+    }
+
+    // -------- Intercept window.open in page context (covers PrimeFaces flows) --------
+    function injectWindowOpenHook() {
+        const script = document.createElement('script');
+        script.textContent = `
+            (function() {
+                let addAutofillNextOpen = false;
+                function isNormalUrl(u) {
+                    return typeof u === "string" && !/^(?:javascript:|data:|blob:)/i.test(u);
+                }
+                function getCurrentWibiid() {
+                    try { return new URL(location.href).searchParams.get("wibiid"); }
+                    catch { return null; }
+                }
+                function appendParams(u, forceAutofill) {
+                    if (!isNormalUrl(u)) return u;
+                    let target;
+                    try { target = new URL(u, location.href); }
+                    catch { return u; }
+                    const wibiid = getCurrentWibiid();
+                    if (wibiid && !target.searchParams.has("wibiid")) {
+                        target.searchParams.set("wibiid", wibiid);
+                    }
+                    if (forceAutofill) {
+                        target.searchParams.set("autofill", "true");
+                    }
+                    return target.toString();
+                }
+                const originalOpen = window.open;
+                Object.defineProperty(window, "open", {
+                    configurable: true,
+                    writable: true,
+                    value: function(url, name, specs, replace) {
+                        if (typeof url === "string") {
+                            url = appendParams(url, addAutofillNextOpen);
+                        }
+                        const ret = originalOpen.call(this, url, name, specs, replace);
+                        addAutofillNextOpen = false;
+                        return ret;
+                    }
+                });
+                window.addEventListener('message', (event) => {
+                    if (event.source !== window) return;
+                    if (!event.data || event.data.source !== 'tecis-extension') return;
+                    if (event.data.type === 'set-autofill-next-open') {
+                        addAutofillNextOpen = true;
+                    }
+                });
+            })();
+        `;
+        (document.head || document.documentElement).appendChild(script);
+        script.remove();
+    }
+
+    injectWindowOpenHook();
+
+    // Also catch plain links that open in a new tab (Ctrl/Meta/middle click)
+    function handleLinkNewTab(ev) {
+        const a = ev.target && ev.target.closest && ev.target.closest("a[href]");
+        if (!a) return;
+
+        const willOpenNewTab =
+            a.target === "_blank" || ev.ctrlKey || ev.metaKey || ev.button === 1;
+
+        if (!willOpenNewTab) return;
+
+        // If this click originated from our Autofill button, set autofill for this navigation
+        if (ev.target && ev.target.closest && ev.target.closest(".autofill-button")) {
+            addAutofillNextOpen = true;
+        }
+
+        const href = a.getAttribute("href");
+        if (!href) return;
+
+        const newHref = appendParams(href, { forceAutofill: addAutofillNextOpen });
+        if (newHref !== href) a.setAttribute("href", newHref);
+
+        // one-shot
+        addAutofillNextOpen = false;
+    }
+    window.addEventListener("click", handleLinkNewTab, true);
+    window.addEventListener("auxclick", handleLinkNewTab, true);
+
+    // -------- DOM patcher: find Gesprächsnotiz rows & clone the button --------
+    function isGespraechsnotizRow(row) {
+        try {
+            const first = row.querySelector(".first, #page\\:center\\:contentForm\\:nbVorgList\\:0\\:j_idt376\\:1\\:dfirst");
+            return first && first.textContent.trim() === "Gesprächsnotiz";
+        } catch { return false; }
+    }
+
+    function enhanceRow(row) {
+        if (row.dataset.autofillAugmented === "1") return; // already done
+
+        // Find the Bearbeiten button (PrimeFaces uses this class in your snippet)
+        const editBtn = row.querySelector("button.edit-document-button");
+        if (!editBtn) return;
+
+        // Avoid doubling if an autofill twin already exists
+        if (row.querySelector(".autofill-button")) return;
+
+        // Clone it
+        const autofillBtn = editBtn.cloneNode(true);
+
+        // Make it visually/semantically distinct
+        autofillBtn.classList.add("autofill-button");
+        autofillBtn.title = "Bearbeiten (Autofill)";
+        // Update the label text in its span
+        const labelSpan = autofillBtn.querySelector(".ui-button-text, span.ui-button-text");
+        if (labelSpan) labelSpan.textContent = "Autofill";
+
+        // Make the id/name unique (optional; helps avoid duplicate ids)
+        if (autofillBtn.id) autofillBtn.id += "_autofill";
+        if (autofillBtn.name) autofillBtn.name += "_autofill";
+
+        // Add a pre-click hook that sets the one-shot autofill flag,
+        // then lets the original inline onclick (PrimeFaces.ab(...);return false;) run.
+        autofillBtn.addEventListener("click", function () {
+            addAutofillNextOpen = true; // ensure the *next* link uses autofill=true
+            window.postMessage({ source: 'tecis-extension', type: 'set-autofill-next-open' }, '*');
+            // Do not preventDefault: we want the original onclick to execute
+        }, { capture: true });
+
+        // Insert right after the original Bearbeiten button
+        editBtn.parentElement.insertBefore(autofillBtn, editBtn.nextSibling);
+
+        row.dataset.autofillAugmented = "1";
+    }
+
+    function scan() {
+        // Rows often look like: <div class="dokumentRow ..."> ... <div class="first">Gesprächsnotiz</div> ... <div class="third">[buttons]</div> ...
+        const rows = document.querySelectorAll("div.dokumentRow, div.bm_docRow1, div[id*='panelDokumente']");
+        rows.forEach(row => {
+            if (isGespraechsnotizRow(row)) enhanceRow(row);
+        });
+    }
+
+    // Initial + observe JSF/PrimeFaces ajax updates
+    const mo = new MutationObserver(() => scan());
+    mo.observe(document.documentElement, { subtree: true, childList: true });
+    // Run once when DOM is ready
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", scan);
+    } else {
+        scan();
+    }
+})();
+
+// ===== BP Editor Autofill (wibiid) =====
+(function () {
+    'use strict';
+
+    // Only run this block on the editor UI
+    if (!location.href.startsWith("https://bm.bp.vertrieb-plattform.de/edocbox/editor/ui/")) return;
+
+    // ------- 0. DATA INTERCEPTION (Run immediately) -------
+    // We create a promise that resolves when the page loads its own document JSON
+    function createDocumentJsonPromise() {
+        let resolvePromise;
+        const promise = new Promise((resolve) => {
+            resolvePromise = resolve;
+        });
+
+        const handler = (event) => {
+            if (event.source !== window) return;
+            if (!event.data || event.data.source !== 'tecis-extension') return;
+            if (event.data.type !== 'document-json') return;
+            console.log("Autofill: Intercepted document JSON successfully.");
+            resolvePromise(event.data.payload);
+            window.removeEventListener('message', handler);
+        };
+
+        window.addEventListener('message', handler);
+
+        const script = document.createElement('script');
+        script.textContent = `
+            (function() {
+                const originalOpen = XMLHttpRequest.prototype.open;
+                XMLHttpRequest.prototype.open = function(method, url) {
+                    if (typeof url === 'string' && url.includes('pAction=load')) {
+                        this.addEventListener('load', function() {
+                            try {
+                                const json = JSON.parse(this.responseText);
+                                if (json && (json.pages || json.formFields)) {
+                                    window.postMessage({ source: 'tecis-extension', type: 'document-json', payload: json }, '*');
+                                }
+                            } catch (e) {
+                                console.error('Autofill: Failed to parse intercepted JSON', e);
+                            }
+                        });
+                    }
+                    return originalOpen.apply(this, arguments);
+                };
+            })();
+        `;
+        (document.head || document.documentElement).appendChild(script);
+        script.remove();
+
+        return promise;
+    }
+
+    const documentJsonPromise = createDocumentJsonPromise();
+
+
+    // ------- Small utilities -------
+    const qs = new URLSearchParams(window.location.search);
+    const isAutoFill = (qs.get('autofill') || '').toLowerCase() === 'true';
+    if(!isAutoFill) return;
+
+    // ------- Overlay Helper -------
+    function updateOverlay(message = "Gesprächsnotiz wird vorausgefüllt") {
+        const overlayId = 'autofill-loading-overlay';
+        let div = document.getElementById(overlayId);
+
+        if (!div) {
+            div = document.createElement('div');
+            div.id = overlayId;
+            div.style.cssText = `
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.75); z-index: 999999;
+            display: flex; justify-content: center; align-items: center;
+            flex-direction: column; font-family: sans-serif; text-align: center;
+        `;
+            const text = document.createElement('div');
+            text.className = 'autofill-overlay-text'; // Klasse für einfache Auswahl
+            text.style.cssText = "font-size: 24px; color: #333; margin-bottom: 20px; padding: 0 20px;";
+            div.appendChild(text);
+
+            const spinner = document.createElement('div');
+            spinner.style.cssText = "border: 5px solid #f3f3f3; border-top: 5px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite;";
+            const style = document.createElement('style');
+            style.innerHTML = "@keyframes spin {0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); }}";
+            div.appendChild(style);
+            div.appendChild(spinner);
+
+            document.body.appendChild(div);
+        }
+
+        const textEl = div.querySelector('.autofill-overlay-text');
+        if (textEl) textEl.innerText = message;
+    }
+
+    function removeOverlay() {
+        const div = document.getElementById('autofill-loading-overlay');
+        if (div) div.remove();
+    }
+
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+    function decodeBase64Url(b64) {
+        if (!b64) return '';
+        b64 = b64.replace(/-/g, '+').replace(/_/g, '/');
+        while (b64.length % 4) b64 += '=';
+        try {
+            return decodeURIComponent(Array.prototype.map.call(atob(b64), c =>
+                '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
+            ).join(''));
+        } catch (e) {
+            try { return atob(b64); } catch { return ''; }
+        }
+    }
+
+    function gmFetchJson(url, { method = 'GET', headers = {}, body = null, withCredentials = true } = {}) {
+        return extensionFetchJson(url, { method, headers, body, withCredentials })
+            .catch((err) => {
+                if (err.status === 500 && err.data && err.data.errorType === "HAUSHALT_NOT_ACTIVE") {
+                    const customErr = new Error("HAUSHALT_NOT_ACTIVE");
+                    customErr.isHaushaltNotActive = true;
+                    throw customErr;
+                }
+                throw err;
+            });
+    }
+
+    // --- NEU: Funktion zur Aktivierung des Haushalts im Startkonzept ---
+    async function activateHaushalt(haushaltId) {
+        const apiBase = 'https://startkonzept.bp.vertrieb-plattform.de/api';
+        updateOverlay('Haushalt ist nicht aktiv. Lade Daten aus dem Startkonzept...');
+
+        // Schritt 1: Kundennamen für die Erstellung der Beratung ermitteln
+        let kundenname = '';
+        try {
+            const konstellationUrl = `${apiBase}/haushalt-konstellation/${haushaltId}`;
+            const konstellationData = await gmFetchJson(konstellationUrl);
+            const vorstand = konstellationData?.haushaltsvorstand;
+            if (vorstand?.vorname && vorstand?.name) {
+                kundenname = `${vorstand.vorname} ${vorstand.name}`;
+                console.log(`Autofill: Kundenname für die Aktivierung gefunden: ${kundenname}`);
+            } else {
+                throw new Error("Kundenname konnte nicht aus der Haushalts-Konstellation ermittelt werden.");
+            }
+        } catch (err) {
+            console.error("Fehler bei der Ermittlung des Kundennamens:", err);
+            throw new Error("Aktivierung fehlgeschlagen: Kundenname konnte nicht abgerufen werden.");
+        }
+
+        // Schritt 2: Eine neue Beratung (Consultation) erstellen, um den Ladevorgang anzustoßen
+        try {
+            const consultationUrl = `${apiBase}/consultation`;
+            await gmFetchJson(consultationUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json;charset=UTF-8' },
+                body: JSON.stringify({
+                    description: "",
+                    haushaltId: haushaltId,
+                    kundenname: kundenname
+                })
+            });
+            console.log("Autofill: Beratung erfolgreich erstellt, Ladevorgang gestartet.");
+        } catch (err) {
+            console.error("Fehler beim Erstellen der Beratung:", err);
+            throw new Error("Aktivierung fehlgeschlagen: Beratung konnte nicht gestartet werden.");
+        }
+
+        // Schritt 3: Den Lade-Status pollen, bis der Haushalt aktiv ist
+        const statusUrl = `${apiBase}/haushalt/${haushaltId}/loading-status`;
+        for (let i = 0; i < 30; i++) { // Timeout nach ca. 60 Sekunden
+            await sleep(2000); // 2 Sekunden zwischen den Prüfungen warten
+            try {
+                const statusData = await gmFetchJson(statusUrl);
+                const statusNote = statusData.note || '';
+                console.log(`Autofill: Lade-Status: "${statusNote}"`);
+                updateOverlay(`Lade Daten... (${statusNote})`);
+
+                if (statusNote.includes("Haushalt ist geladen und aktiv")) {
+                    console.log("Autofill: Haushalt erfolgreich aktiviert!");
+                    updateOverlay("Daten geladen, fülle Formular aus...");
+                    await sleep(500); // Kurze Pause, bevor es weitergeht
+                    return; // Erfolg!
+                }
+            } catch (err) {
+                console.warn("Warnung: Fehler beim Abrufen des Lade-Status (Versuch wird fortgesetzt):", err);
+            }
+        }
+
+        throw new Error("Aktivierung fehlgeschlagen: Zeitüberschreitung beim Warten auf die Haushalts-Aktivierung.");
+    }
+
+    // ---- JSON path helper (e.g. "clusterDto.liquidesVermoegen" or "arr[0].x") ----
+    function getByPath(obj, path) {
+        if (!path) return undefined;
+        const norm = path.replace(/\[(\d+)\]/g, '.$1').replace(/^\./, '');
+        return norm.split('.').reduce((acc, k) => (acc == null ? undefined : acc[k]), obj);
+    }
+
+    // 3) EED Autofill Helper (mit Auto-Scroll & resolvierter URL/Needle)
+    (function(){
+        function asArray(x){
+            if (Array.isArray(x)) return x;
+            if (!x) return [];
+            if (typeof x === 'object') return Object.values(x);
+            return [];
+        }
+
+        function getAllPages(allJson){
+            const pages = asArray(allJson && allJson.pages);
+            if (!pages.length) throw new Error('allJson.pages[] missing or empty');
+            return pages;
+        }
+
+        function translatFacts(apiValue){
+            switch (apiValue){
+                //Anzahl an Geschäften
+                case 'Keine': return '0';
+                case 'Anzahl_1_5': return '1';
+                case 'Anzahl_6_10': return '2';
+                case 'Anzahl_mehr': return '3';
+                //gegenwert
+                case "Wert_1_3000": return '1';
+                case "Wert_3001_5000": return '2';
+                case "Wert_5001_10000": return '3';
+                case "Wert_mehr": return '4';
+            }
+        }
+        // ---------------------------------------------------------------------------
+
+        function findJsonField(allJson, fieldId, valueForRadio, position){
+            const pages = getAllPages(allJson);
+            let candidates = [];
+
+            for (const page of pages){
+                for (const f of asArray(page.fields)){
+                    if (!f || f.id !== fieldId) continue;
+
+                    // Logic for specific radio values (legacy support)
+                    const type = (f.t || '').toLowerCase();
+                    if (type === 'radio' && valueForRadio != null && !position){
+                        if (String(f.valchecked) === String(translatFacts(valueForRadio))) return {page, field: f};
+                    }
+                    candidates.push({page, field: f});
+                }
+            }
+            if (!candidates.length) throw new Error(`Field id "${fieldId}" not found in any page`);
+
+            // Check for spatial requirements
+            if (position === 'left') {
+                candidates.sort((a, b) => (a.field.x || 0) - (b.field.x || 0));
+                return candidates[0];
+            }
+            if (position === 'right') {
+                candidates.sort((a, b) => (b.field.x || 0) - (a.field.x || 0));
+                return candidates[0];
+            }
+
+            // Default (first found)
+            return candidates[0];
+        }
+
+        function getEedPageByNumber(pageNumber) {
+            const pages = Array.from(document.querySelectorAll('eed-page'));
+            for (const p of pages) {
+                const num = p.querySelector('eed-page-number .page-number');
+                if (num && num.textContent.trim() === String(pageNumber)) return p;
+            }
+            return null;
+        }
+
+        function getScrollContainer(){
+            const anyPage = document.querySelector('eed-page');
+            let el = anyPage ? anyPage.parentElement : null;
+            while (el){
+                const style = getComputedStyle(el);
+                if ((style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight) {
+                    return el;
+                }
+                el = el.parentElement;
+            }
+            return document.scrollingElement || document.documentElement || document.body;
+        }
+
+        function median(arr){ const s=[...arr].sort((a,b)=>a-b); const m=Math.floor(s.length/2); return s.length? (s.length%2? s[m] : (s[m-1]+s[m])/2) : 800; }
+
+        function renderedPagesInfo(){
+            const items = [];
+            document.querySelectorAll('eed-page').forEach(p=>{
+                const numTxt = p.querySelector('eed-page-number .page-number')?.textContent?.trim();
+                if (!numTxt) return;
+                const num = Number(numTxt);
+                const rect = p.getBoundingClientRect();
+                items.push({num, rect, el: p});
+            });
+            items.sort((a,b)=>a.rect.top - b.rect.top);
+            const nums = items.map(i=>i.num);
+            return {
+                items,
+                nums,
+                min: nums.length ? Math.min(...nums) : null,
+                max: nums.length ? Math.max(...nums) : null,
+                medianHeight: items.length ? median(items.map(i=>i.rect.height)) : 800
+            };
+        }
+
+        function getVirtualScroller() {
+            const el = document.querySelector('cdk-virtual-scroll-viewport');
+            if (!el || !el.__ngContext__) return null;
+            for (let i = 0; i < 30; i++) {
+                const item = el.__ngContext__[i];
+                if (item && typeof item === 'object' && typeof item.scrollToIndex === 'function') {
+                    return item;
+                }
+            }
+            return null;
+        }
+
+        async function revealPage(pageNumber, maxSteps=120){
+            let el = getEedPageByNumber(pageNumber);
+            if (el) return el;
+
+            const viewport = getVirtualScroller();
+            if (viewport) {
+                viewport.scrollToIndex(pageNumber - 1);
+                await sleep(150);
+                el = getEedPageByNumber(pageNumber);
+                if (el) return el;
+            }
+
+            const scroller = getScrollContainer();
+            for (let step=0; step<maxSteps; step++){
+                const info = renderedPagesInfo();
+                if (!info.items.length){
+                    scroller.scrollBy({top: 400, left: 0, behavior: 'auto'});
+                    await sleep(30);
+                    el = getEedPageByNumber(pageNumber);
+                    if (el) return el;
+                    continue;
+                }
+                el = getEedPageByNumber(pageNumber);
+                if (el) return el;
+
+                const {min, max, medianHeight} = info;
+                let dir = 0;
+                if (min != null && max != null) {
+                    if (pageNumber > max) dir = +1;
+                    else if (pageNumber < min) dir = -1;
+                    else dir = 0;
+                }
+                const delta = (dir === 0) ? (medianHeight * 0.6) : (dir * medianHeight * 0.95);
+                scroller.scrollBy({top: delta, behavior: 'auto'});
+                await sleep(70);
+            }
+            throw new Error(`Could not reveal eed-page ${pageNumber} by scrolling`);
+        }
+
+        function parsePx(v){
+            return typeof v === 'string' ? parseFloat(v.replace('px','')) : (v || 0);
+        }
+
+        function getPageScale(pageEl, jsonPageWidth) {
+            const pageBox = pageEl.querySelector('.page');
+            if (!pageBox) throw new Error('No .page element found inside eed-page');
+            const cssW = parsePx(pageBox.style.width) || pageBox.getBoundingClientRect().width;
+            return cssW / (jsonPageWidth || 1200);
+        }
+
+        function computeTargetRect(fieldEntry, scale){
+            return {
+                left: (fieldEntry.x || 0) * scale,
+                top:  (fieldEntry.y || 0) * scale,
+                w:    (fieldEntry.w || 0) * scale,
+                h:    (fieldEntry.h || 0) * scale
+            };
+        }
+
+        function coordsMatch(el, target, tol=3.8){
+            const left = parsePx(el.style.left);
+            const top  = parsePx(el.style.top);
+            const w    = parsePx(el.style.width);
+            const h    = parsePx(el.style.height);
+            return Math.abs(left-target.left)<=tol && Math.abs(top-target.top)<=tol &&
+                Math.abs(w-target.w)<=tol   && Math.abs(h-target.h)<=tol;
+        }
+
+        function getFormfields(pageEl){
+            return Array.from(pageEl.querySelectorAll('.formfield'));
+        }
+
+        async function findDomNodeForField(pageJson, fieldEntry) {
+            const pageEl = await revealPage(pageJson.page);
+            pageEl.scrollIntoView({block: 'center', behavior: 'auto'});
+
+            // We use MutationObserver to wait for the field to appear instead of a fixed polling loop.
+            return new Promise((resolve, reject) => {
+                const tryFind = () => {
+                    try {
+                        const scale = getPageScale(pageEl, pageJson.width);
+                        const target = computeTargetRect(fieldEntry, scale);
+                        const matches = getFormfields(pageEl).filter(ff => coordsMatch(ff, target));
+                        if (matches.length) return matches[0];
+                    } catch (e) {
+                        // Page or scale might not be ready yet
+                    }
+                    return null;
+                };
+
+                // 1. Immediate Check
+                const found = tryFind();
+                if (found) {
+                    resolve({node: found, pageEl});
+                    return;
+                }
+
+                // 2. Change Detection
+                const observer = new MutationObserver(() => {
+                    const node = tryFind();
+                    if (node) {
+                        observer.disconnect();
+                        resolve({node, pageEl});
+                    }
+                });
+
+                observer.observe(pageEl, { childList: true, subtree: true, attributes: true });
+
+                // 3. Timeout fallback (.5 seconds)
+                setTimeout(() => {
+                    observer.disconnect();
+                    reject(new Error(`Formfield at specified coordinates not found on page ${pageJson.page} (Timeout)`));
+                }, 500);
+            });
+        }
+
+        async function getActionElement(wrapperEl){
+            let input = wrapperEl.querySelector('.frame input.input');
+            if (input) return {kind:'text', el: input};
+
+            const mat = wrapperEl.querySelector('mat-checkbox');
+            if (mat) {
+                const isRadioStyle = mat.classList.contains('radio');
+                const inp = mat.querySelector('input[type="checkbox"]');
+                return {kind: isRadioStyle ? 'radio' : 'checkbox', el: mat, inp};
+            }
+            input = wrapperEl.querySelector('input');
+            if (input) return {kind: input.type==='checkbox' ? 'checkbox' : 'text', el: input};
+            throw new Error('No actionable input element found inside .formfield');
+        }
+
+        function setNativeInputValue(input, value){
+            const proto = Object.getPrototypeOf(input) || HTMLInputElement.prototype;
+            const desc  = Object.getOwnPropertyDescriptor(proto, 'value') ||
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+            if (desc && desc.set) desc.set.call(input, value);
+            else input.value = value;
+        }
+
+        function clickMaterial(matEl){
+            const input = matEl.querySelector('input[type="checkbox"]');
+            if (input) { input.click(); return; }
+            const label = matEl.querySelector('label');
+            if (label) { label.click(); return; }
+            const inner = matEl.querySelector('.mat-checkbox-inner-container');
+            if (inner) { inner.click(); return; }
+            matEl.click();
+        }
+
+        async function withTemporarilyEnabled(inputEl, fn){
+            const wasDisabled = !!inputEl.disabled;
+            if (wasDisabled) inputEl.disabled = false;
+            try { return await fn(); }
+            finally { if (wasDisabled) inputEl.disabled = true; }
+        }
+
+        async function setText(wrapperEl, value){
+            const {el: input} = await getActionElement(wrapperEl);
+            await withTemporarilyEnabled(input, async () => {
+                input.focus();
+                setNativeInputValue(input, value == null ? '' : String(value));
+                input.dispatchEvent(new Event('input',  {bubbles:true}));
+                input.dispatchEvent(new Event('change', {bubbles:true}));
+                input.dispatchEvent(new Event('blur',   {bubbles:true}));
+            });
+        }
+
+        async function setCheckbox(wrapperEl, want){
+            const action = await getActionElement(wrapperEl);
+            if (action.kind !== 'checkbox') throw new Error('Target is not a checkbox');
+            const getState = () => {
+                if (action.inp) {
+                    const aria = action.inp.getAttribute('aria-checked');
+                    if (aria === 'true' || aria === 'false') return aria === 'true';
+                    return !!action.inp.checked;
+                }
+                const aria = wrapperEl.querySelector('input[type="checkbox"]')?.getAttribute('aria-checked');
+                if (aria === 'true' || aria === 'false') return aria === 'true';
+                const cb = wrapperEl.querySelector('input[type="checkbox"]');
+                return !!(cb && cb.checked);
+            };
+            want = !!want;
+            for (let i=0; i<2 && getState() !== want; i++){
+                clickMaterial(action.el || wrapperEl);
+                await sleep(14);
+            }
+            const inp = action.inp || wrapperEl.querySelector('input[type="checkbox"]');
+            if (inp){
+                inp.dispatchEvent(new Event('change', {bubbles:true}));
+                inp.dispatchEvent(new Event('blur',   {bubbles:true}));
+            }
+        }
+
+        async function setRadio(wrapperEl){
+            const action = await getActionElement(wrapperEl);
+            if (action.kind !== 'radio') throw new Error('Target is not a radio');
+            clickMaterial(action.el || wrapperEl);
+            const inp = action.inp || wrapperEl.querySelector('input[type="checkbox"]');
+            if (inp){
+                inp.dispatchEvent(new Event('change', {bubbles:true}));
+                inp.dispatchEvent(new Event('blur',   {bubbles:true}));
+            }
+            await sleep(10);
+        }
+
+        // Updated signature to accept position
+        window.setFieldByIdResolvedValue = async function(allJson, fieldId, value, position){
+            const {page, field} = findJsonField(allJson, fieldId, value, position);
+            const {node} = await findDomNodeForField(page, field);
+            const type = (field.t || '').toLowerCase();
+            if (type === 'text')     return setText(node, value);
+            if (type === 'checkbox') return setCheckbox(node, !!value);
+            if (type === 'radio')    return setRadio(node);
+            throw new Error(`Unsupported field type "${field.t}" for id "${fieldId}"`);
+        };
+
+        window.setFieldById = async function(allJson, fieldId, url, needle, position){
+            const json = await gmFetchJson(url, { withCredentials: true });
+            const value = getByPath(json, needle);
+            return window.setFieldByIdResolvedValue(allJson, fieldId, value, position);
+        };
+
+        console.log('%c[EED helper] Ready: setFieldById(allJson, fieldId, url, needle, position)','color:#0a0;font-weight:bold;');
+    })();
+
+    if (!isAutoFill) return;
+
+    // =================================================================================
+    // RUN Autofill
+    // =================================================================================
+
+    /**
+     * Führt den eigentlichen Ausfüllprozess aus, nachdem alle Vorbedingungen erfüllt sind.
+     */
+    async function performAutofill(pageData, wibiid) {
+        // 4) Mappings
+        const apiBase = 'https://startkonzept.bp.vertrieb-plattform.de/api';
+
+        console.log(`${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`);
+        const tasks = [
+            // --- EXISTING FIELDS ---
+            {
+                field: 'Angaben_zum_Gespraech_Beruf1',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=KundeStammdaten&clusterId=0140d6ba-3c7d-4ee3-a918-fa30af996043`,
+                needle: 'clusterDto.beruf'
+            },
+            {
+                field: 'Profilierung_Kenntnisse_Chbx_Geldmarktfonds',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.kunde.geldmarktfonds'
+            },
+            {
+                field: 'Profilierung_Kenntnisse_Chbx_Rentenfonds',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.kunde.rentenfonds'
+            },
+            {
+                field: 'Profilierung_Kenntnisse_Chbx_Aktienfonds',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.kunde.aktienfonds'
+            },
+            {
+                field: 'Profilierung_Kenntnisse_Chbx_Immofonds',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.kunde.immobilienfonds'
+            },
+            {
+                field: 'Profilierung_Kenntnisse_Chbx_GemischteFonds',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.kunde.gemischtefonds'
+            },
+            {
+                field: 'Profilierung_Kenntnisse_Chbx_Hedgefonds',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.kunde.hedgefonds'
+            },
+            {
+                field: 'Profilierung_Kenntnisse_Chbx_RVoderLV',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.kunde.versicherungen'
+            },
+            {
+                field: 'Profilierung_Kenntnisse_Chbx_Keine',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.kunde.keine'
+            },
+            {
+                field: 'Profilierung_Kenntnisse_Radio_AnzGesch',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.kunde.transaktionenAnzahl',
+                value: 1,
+            },
+            {
+                field: 'Profilierung_Kenntnisse_Radio_TransWert',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.kunde.transaktionenWert',
+                value: 1,
+            },
+            {
+                field: 'Nachhaltigkeit_Beruecksichtigung',
+                staticValue: true,
+                position: 'right'
+            },
+            {
+                field: 'FinanzenHH_Einkommen_Monat',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvLaufendeEinnahmenUndAusgaben&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.monatlicheNettoeinnahmen',
+            },
+            {
+                field: 'FinanzenHH_Ausgaben_Monat',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvLaufendeEinnahmenUndAusgaben&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.monatlicheAusgaben',
+            },
+            {
+                field: 'FinanzenHH_Ueberschuss_Monat',
+                skip: true
+            },
+            {
+                field: 'FinanzenHH_Vermoegen_Liquides',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvVermoegenUndVerbindlichkeiten&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.liquidesVermoegen'
+            },
+            {
+                field: 'FinanzenHH_Vermoegen_Immo',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvVermoegenUndVerbindlichkeiten&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.immobilienVermoegen'
+            },
+            {
+                field: 'FinanzenHH_Vermoegen_Kapitalanlagen',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvVermoegenUndVerbindlichkeiten&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.kapitalanlagenVermoegen'
+            },
+            {
+                field: 'FinanzenHH_Verbindlichkeiten',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvVermoegenUndVerbindlichkeiten&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.verbindlichkeiten'
+            },
+            {
+                field: 'FinanzenHH_Aenderungen_Radio',
+                staticValue: true,
+                position: 'right'
+            },
+            {
+                field: 'pep',
+                staticValue: true,
+                position: 'left'
+            },
+        ];
+
+        // --- LOGGING NON-AUTOFILLED FIELDS ---
+        const allFieldIds = [];
+        (pageData.pages || []).forEach(p => {
+            const fields = Array.isArray(p.fields) ? p.fields : Object.values(p.fields || {});
+            fields.forEach(f => { if (f && f.id) allFieldIds.push(f.id); });
+        });
+
+        const filledIds = new Set(tasks.map(t => t.field));
+        const notFilled = allFieldIds.filter(id => !filledIds.has(id));
+
+        console.group("Fields NOT Autofilled");
+        console.log("Total fields found:", allFieldIds.length);
+        console.log("Total fields filled:", filledIds.size);
+        console.log("List of unfilled fields:", notFilled);
+        console.groupEnd();
+
+        // 5) gewünschte 1s-Verzögerung
+        await sleep(1000);
+
+        // 6) Execute mappings
+        for (const t of tasks) {
+            try {
+                if (t.skip) continue;
+                if (t.staticValue !== undefined) {
+                    await window.setFieldByIdResolvedValue(pageData, t.field, t.staticValue, t.position);
+                    continue;
+                }
+                const fn = (typeof window.setFieldById === 'function') ? window.setFieldById : null;
+                if (fn) {
+                    await fn(pageData, t.field, t.url, t.needle, t.position);
+                }
+            } catch (err) {
+                if (err.isHaushaltNotActive) throw err;
+                console.error(`Failed to set field "${t.field}":`, err);
+            }
+        }
+
+        // 7) Special Calculation: Ueberschuss
+        try {
+            const finUrl = `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvLaufendeEinnahmenUndAusgaben&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`;
+            const finJson = await gmFetchJson(finUrl, { withCredentials: true });
+            const inc = parseFloat(getByPath(finJson, 'clusterDto.monatlicheNettoeinnahmen')) || 0;
+            const exp = parseFloat(getByPath(finJson, 'clusterDto.monatlicheAusgaben')) || 0;
+            const diff = inc - exp;
+            await window.setFieldByIdResolvedValue(pageData, 'FinanzenHH_Ueberschuss_Monat', diff);
+            console.log(`Calculated Ueberschuss: ${inc} - ${exp} = ${diff}`);
+        } catch (calcErr) {
+            if (calcErr.isHaushaltNotActive) throw calcErr;
+            console.error("Calculation for FinanzenHH_Ueberschuss_Monat failed:", calcErr);
+        }
+
+        // 8) Signature Fields: Ort + Date
+        try {
+            const stammdatenUrl = `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=KundeStammdaten&clusterId=0140d6ba-3c7d-4ee3-a918-fa30af996043`;
+            const stammdatenJson = await gmFetchJson(stammdatenUrl, { withCredentials: true });
+            const city = getByPath(stammdatenJson, 'clusterDto.ort') || '';
+
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const signatureValue = city ? `${city}, ${dateStr}` : dateStr;
+
+            const sigFields = ['Unterschriften_Ort_Dat', 'Unterschriften_Ort_Dat-1-', 'Unterschriften_Ort_Dat-2-'];
+            for (const fId of sigFields) {
+                try {
+                    await window.setFieldByIdResolvedValue(pageData, fId, signatureValue);
+                } catch (e) {
+                    // ignore if field not found
+                }
+            }
+        } catch (sigErr) {
+            if (sigErr.isHaushaltNotActive) throw sigErr;
+            console.error("Signature location/date autofill failed:", sigErr);
+        }
+    }
+
+
+    /**
+     * Hauptfunktion, die den gesamten Autofill-Prozess orchestriert.
+     */
+    async function run() {
+        if (!isAutoFill) return;
+        updateOverlay("Starte Autofill...");
+
+        let pageData;
+        const wibiid = decodeBase64Url(qs.get('wibiid') || '').trim();
+
+        try {
+            // Schritt 1: Lade die JSON-Struktur des Dokuments
+            try {
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject("Timeout"), 5000));
+                pageData = await Promise.race([documentJsonPromise, timeoutPromise]);
+            } catch (err) {
+                console.log("Interceptor timed out or failed, trying manual fetch...");
+                const docId = qs.get('documentid');
+                if (docId) {
+                    const fallbackUrl = `https://bm.bp.vertrieb-plattform.de/edocbox/editor/servlet/documentViewer?pAction=load&documentid=${docId}`;
+                    pageData = await gmFetchJson(fallbackUrl, { withCredentials: true });
+                }
+            }
+
+            if (!pageData || !Array.isArray(pageData.pages)) {
+                throw new Error('Dokument-Daten konnten nicht geladen werden (Interception und Fallback fehlgeschlagen).');
+            }
+
+            // Schritt 2: Versuche, das Formular auszufüllen
+            await performAutofill(pageData, wibiid);
+
+        } catch (e) {
+            // Schritt 3: Fehlerbehandlung bei nicht aktivem Haushalt
+            if (e && e.isHaushaltNotActive) {
+                console.warn("Haushalt ist nicht aktiv. Starte den Aktivierungsprozess...");
+                try {
+                    // Versuche, den Haushalt zu aktivieren
+                    await activateHaushalt(wibiid);
+                    // Wenn die Aktivierung erfolgreich war, versuche das Ausfüllen erneut
+                    console.log("Aktivierung erfolgreich. Starte Autofill erneut.");
+                    updateOverlay("Fülle Formular aus...");
+                    await performAutofill(pageData, wibiid);
+                } catch (activationError) {
+                    // Wenn die Aktivierung fehlschlägt, zeige eine Fehlermeldung
+                    removeOverlay();
+                    console.error('Autofill-Fehler nach fehlgeschlagener Aktivierung:', activationError);
+                    alert('Automatischer Ladevorgang der Kundendaten fehlgeschlagen:\n\n' + (activationError.message || activationError));
+                    return;
+                }
+            } else {
+                // Behandle alle anderen, unerwarteten Fehler
+                removeOverlay();
+                console.error('Autofill script error:', e);
+                alert('Ein unerwarteter Autofill-Fehler ist aufgetreten:\n\n' + (e && e.message ? e.message : String(e)));
+                return;
+            }
+        }
+
+        // Wenn alles gut ging, schließe das Overlay
+        removeOverlay();
+        console.log("Autofill erfolgreich abgeschlossen.");
+    }
+
+    // =================================================================================
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', run, { once: true });
+    } else {
+        run();
+    }
+})();
