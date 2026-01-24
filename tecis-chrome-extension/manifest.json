@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "tecis Userscripts Bundle",
+  "version": "1.0.0",
+  "description": "Kombiniert tecis Dokumente Datenbank, BM Gesprächsnotiz Autofill und Affiliate Links.",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "https://bm.bp.vertrieb-plattform.de/*",
+    "https://startkonzept.bp.vertrieb-plattform.de/*",
+    "https://www.crm.vertrieb-plattform.de/*",
+    "https://mopoliti.de/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://bm.bp.vertrieb-plattform.de/bm/*"],
+      "js": ["content/tecis-bm-gespraechsnotiz-autofill.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://bm.bp.vertrieb-plattform.de/edocbox/editor/ui/*"],
+      "js": ["content/tecis-bm-gespraechsnotiz-autofill.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://bm.bp.vertrieb-plattform.de/bm/*"],
+      "js": ["lib/pdf-lib.js", "content/tecis-dokumente-datenbank.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/affiliate-links.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["content/page-window-open-hook.js"],
+      "matches": ["https://bm.bp.vertrieb-plattform.de/bm/*"]
+    }
+  ]
+}
