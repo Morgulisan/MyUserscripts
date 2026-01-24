@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         tecis BM Gesprächsnotiz Autofill
 // @namespace    http://tampermonkey.net/
-// @version      2.0.8
+// @version      2.1.0
 // @description  Befüllt die Gesprächsnotiz wenn ?autofill=true gesetzt ist und fügt einen Autofill button in der BM hinzu
 // @author       Malte Kretzschmar
 // @match        https://bm.bp.vertrieb-plattform.de/bm/*
@@ -102,7 +102,7 @@
     window.addEventListener("auxclick", handleLinkNewTab, true);
 
     // -------- DOM patcher: find Gesprächsnotiz rows & clone the button --------
-    function isGesprächsnotizRow(row) {
+    function isGespraechsnotizRow(row) {
         try {
             const first = row.querySelector(".first, #page\\:center\\:contentForm\\:nbVorgList\\:0\\:j_idt376\\:1\\:dfirst");
             return first && first.textContent.trim() === "Gesprächsnotiz";
@@ -150,7 +150,7 @@
         // Rows often look like: <div class="dokumentRow ..."> ... <div class="first">Gesprächsnotiz</div> ... <div class="third">[buttons]</div> ...
         const rows = document.querySelectorAll("div.dokumentRow, div.bm_docRow1, div[id*='panelDokumente']");
         rows.forEach(row => {
-            if (isGesprächsnotizRow(row)) enhanceRow(row);
+            if (isGespraechsnotizRow(row)) enhanceRow(row);
         });
     }
 
@@ -206,31 +206,36 @@
     if(!isAutoFill) return;
 
     // ------- Overlay Helper -------
-    function showOverlay() {
+    function updateOverlay(message = "Gesprächsnotiz wird vorausgefüllt") {
         const overlayId = 'autofill-loading-overlay';
-        if (document.getElementById(overlayId)) return;
-        const div = document.createElement('div');
-        div.id = overlayId;
-        div.style.cssText = `
+        let div = document.getElementById(overlayId);
+
+        if (!div) {
+            div = document.createElement('div');
+            div.id = overlayId;
+            div.style.cssText = `
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(255, 255, 255, 0.75); z-index: 999999;
             display: flex; justify-content: center; align-items: center;
-            flex-direction: column; font-family: sans-serif;
+            flex-direction: column; font-family: sans-serif; text-align: center;
         `;
-        const text = document.createElement('div');
-        text.innerText = "Gesprächsnotiz wird vorausgefüllt";
-        text.style.cssText = "font-size: 24px; color: #333; margin-bottom: 20px;";
-        div.appendChild(text);
+            const text = document.createElement('div');
+            text.className = 'autofill-overlay-text'; // Klasse für einfache Auswahl
+            text.style.cssText = "font-size: 24px; color: #333; margin-bottom: 20px; padding: 0 20px;";
+            div.appendChild(text);
 
-        // Simple spinner
-        const spinner = document.createElement('div');
-        spinner.style.cssText = "border: 5px solid #f3f3f3; border-top: 5px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite;";
-        const style = document.createElement('style');
-        style.innerHTML = "@keyframes spin {0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); }}";
-        div.appendChild(style);
-        div.appendChild(spinner);
+            const spinner = document.createElement('div');
+            spinner.style.cssText = "border: 5px solid #f3f3f3; border-top: 5px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite;";
+            const style = document.createElement('style');
+            style.innerHTML = "@keyframes spin {0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); }}";
+            div.appendChild(style);
+            div.appendChild(spinner);
 
-        document.body.appendChild(div);
+            document.body.appendChild(div);
+        }
+
+        const textEl = div.querySelector('.autofill-overlay-text');
+        if (textEl) textEl.innerText = message;
     }
 
     function removeOverlay() {
@@ -322,6 +327,70 @@
                 }).catch(reject);
             }
         });
+    }
+
+    // --- NEU: Funktion zur Aktivierung des Haushalts im Startkonzept ---
+    async function activateHaushalt(haushaltId) {
+        const apiBase = 'https://startkonzept.bp.vertrieb-plattform.de/api';
+        updateOverlay('Haushalt ist nicht aktiv. Lade Daten aus dem Startkonzept...');
+
+        // Schritt 1: Kundennamen für die Erstellung der Beratung ermitteln
+        let kundenname = '';
+        try {
+            const konstellationUrl = `${apiBase}/haushalt-konstellation/${haushaltId}`;
+            const konstellationData = await gmFetchJson(konstellationUrl);
+            const vorstand = konstellationData?.haushaltsvorstand;
+            if (vorstand?.vorname && vorstand?.name) {
+                kundenname = `${vorstand.vorname} ${vorstand.name}`;
+                console.log(`Autofill: Kundenname für die Aktivierung gefunden: ${kundenname}`);
+            } else {
+                throw new Error("Kundenname konnte nicht aus der Haushalts-Konstellation ermittelt werden.");
+            }
+        } catch (err) {
+            console.error("Fehler bei der Ermittlung des Kundennamens:", err);
+            throw new Error("Aktivierung fehlgeschlagen: Kundenname konnte nicht abgerufen werden.");
+        }
+
+        // Schritt 2: Eine neue Beratung (Consultation) erstellen, um den Ladevorgang anzustoßen
+        try {
+            const consultationUrl = `${apiBase}/consultation`;
+            await gmFetchJson(consultationUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json;charset=UTF-8' },
+                body: JSON.stringify({
+                    description: "",
+                    haushaltId: haushaltId,
+                    kundenname: kundenname
+                })
+            });
+            console.log("Autofill: Beratung erfolgreich erstellt, Ladevorgang gestartet.");
+        } catch (err) {
+            console.error("Fehler beim Erstellen der Beratung:", err);
+            throw new Error("Aktivierung fehlgeschlagen: Beratung konnte nicht gestartet werden.");
+        }
+
+        // Schritt 3: Den Lade-Status pollen, bis der Haushalt aktiv ist
+        const statusUrl = `${apiBase}/haushalt/${haushaltId}/loading-status`;
+        for (let i = 0; i < 30; i++) { // Timeout nach ca. 60 Sekunden
+            await sleep(2000); // 2 Sekunden zwischen den Prüfungen warten
+            try {
+                const statusData = await gmFetchJson(statusUrl);
+                const statusNote = statusData.note || '';
+                console.log(`Autofill: Lade-Status: "${statusNote}"`);
+                updateOverlay(`Lade Daten... (${statusNote})`);
+
+                if (statusNote.includes("Haushalt ist geladen und aktiv")) {
+                    console.log("Autofill: Haushalt erfolgreich aktiviert!");
+                    updateOverlay("Daten geladen, fülle Formular aus...");
+                    await sleep(500); // Kurze Pause, bevor es weitergeht
+                    return; // Erfolg!
+                }
+            } catch (err) {
+                console.warn("Warnung: Fehler beim Abrufen des Lade-Status (Versuch wird fortgesetzt):", err);
+            }
+        }
+
+        throw new Error("Aktivierung fehlgeschlagen: Zeitüberschreitung beim Warten auf die Haushalts-Aktivierung.");
     }
 
     // ---- JSON path helper (e.g. "clusterDto.liquidesVermoegen" or "arr[0].x") ----
@@ -677,25 +746,221 @@
 
     if (!isAutoFill) return;
 
-    async function run() {
-        showOverlay();
-        try {
-            // 1) Decode wibiid from URL
-            const wibiidB64 = qs.get('wibiid') || '';
-            const wibiid = decodeBase64Url(wibiidB64).trim();
+    // =================================================================================
+    // RUN Autofill
+    // =================================================================================
 
-            // 2) Load the document JSON
-            // We race the interceptor against a timeout.
-            // If the interceptor fails/timeouts, we try a manual fetch with the documentid
-            let pageData = null;
+    /**
+     * Führt den eigentlichen Ausfüllprozess aus, nachdem alle Vorbedingungen erfüllt sind.
+     */
+    async function performAutofill(pageData, wibiid) {
+        // 4) Mappings
+        const apiBase = 'https://startkonzept.bp.vertrieb-plattform.de/api';
+
+        console.log(`${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`);
+        const tasks = [
+            // --- EXISTING FIELDS ---
+            {
+                field: 'Angaben_zum_Gespraech_Beruf1',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=KundeStammdaten&clusterId=0140d6ba-3c7d-4ee3-a918-fa30af996043`,
+                needle: 'clusterDto.beruf'
+            },
+            {
+                field: 'Profilierung_Kenntnisse_Chbx_Geldmarktfonds',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.kunde.geldmarktfonds'
+            },
+            {
+                field: 'Profilierung_Kenntnisse_Chbx_Rentenfonds',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.kunde.rentenfonds'
+            },
+            {
+                field: 'Profilierung_Kenntnisse_Chbx_Aktienfonds',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.kunde.aktienfonds'
+            },
+            {
+                field: 'Profilierung_Kenntnisse_Chbx_Immofonds',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.kunde.immobilienfonds'
+            },
+            {
+                field: 'Profilierung_Kenntnisse_Chbx_GemischteFonds',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.kunde.gemischtefonds'
+            },
+            {
+                field: 'Profilierung_Kenntnisse_Chbx_Hedgefonds',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.kunde.hedgefonds'
+            },
+            {
+                field: 'Profilierung_Kenntnisse_Chbx_RVoderLV',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.kunde.versicherungen'
+            },
+            {
+                field: 'Profilierung_Kenntnisse_Chbx_Keine',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.kunde.keine'
+            },
+            {
+                field: 'Profilierung_Kenntnisse_Radio_AnzGesch',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.kunde.transaktionenAnzahl',
+                value: 1,
+            },
+            {
+                field: 'Profilierung_Kenntnisse_Radio_TransWert',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.kunde.transaktionenWert',
+                value: 1,
+            },
+            {
+                field: 'Nachhaltigkeit_Beruecksichtigung',
+                staticValue: true,
+                position: 'right'
+            },
+            {
+                field: 'FinanzenHH_Einkommen_Monat',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvLaufendeEinnahmenUndAusgaben&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.monatlicheNettoeinnahmen',
+            },
+            {
+                field: 'FinanzenHH_Ausgaben_Monat',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvLaufendeEinnahmenUndAusgaben&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.monatlicheAusgaben',
+            },
+            {
+                field: 'FinanzenHH_Ueberschuss_Monat',
+                skip: true
+            },
+            {
+                field: 'FinanzenHH_Vermoegen_Liquides',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvVermoegenUndVerbindlichkeiten&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.liquidesVermoegen'
+            },
+            {
+                field: 'FinanzenHH_Vermoegen_Immo',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvVermoegenUndVerbindlichkeiten&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.immobilienVermoegen'
+            },
+            {
+                field: 'FinanzenHH_Vermoegen_Kapitalanlagen',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvVermoegenUndVerbindlichkeiten&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.kapitalanlagenVermoegen'
+            },
+            {
+                field: 'FinanzenHH_Verbindlichkeiten',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvVermoegenUndVerbindlichkeiten&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.verbindlichkeiten'
+            },
+            {
+                field: 'FinanzenHH_Aenderungen_Radio',
+                staticValue: true,
+                position: 'right'
+            },
+            {
+                field: 'pep',
+                staticValue: true,
+                position: 'left'
+            },
+        ];
+
+        // --- LOGGING NON-AUTOFILLED FIELDS ---
+        const allFieldIds = [];
+        (pageData.pages || []).forEach(p => {
+            const fields = Array.isArray(p.fields) ? p.fields : Object.values(p.fields || {});
+            fields.forEach(f => { if (f && f.id) allFieldIds.push(f.id); });
+        });
+
+        const filledIds = new Set(tasks.map(t => t.field));
+        const notFilled = allFieldIds.filter(id => !filledIds.has(id));
+
+        console.group("Fields NOT Autofilled");
+        console.log("Total fields found:", allFieldIds.length);
+        console.log("Total fields filled:", filledIds.size);
+        console.log("List of unfilled fields:", notFilled);
+        console.groupEnd();
+
+        // 5) gewünschte 1s-Verzögerung
+        await sleep(1000);
+
+        // 6) Execute mappings
+        for (const t of tasks) {
             try {
-                // Wait up to 5 seconds for the page to load its own document
+                if (t.skip) continue;
+                if (t.staticValue !== undefined) {
+                    await window.setFieldByIdResolvedValue(pageData, t.field, t.staticValue, t.position);
+                    continue;
+                }
+                const fn = (typeof window.setFieldById === 'function') ? window.setFieldById : null;
+                if (fn) {
+                    await fn(pageData, t.field, t.url, t.needle, t.position);
+                }
+            } catch (err) {
+                if (err.isHaushaltNotActive) throw err;
+                console.error(`Failed to set field "${t.field}":`, err);
+            }
+        }
+
+        // 7) Special Calculation: Ueberschuss
+        try {
+            const finUrl = `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvLaufendeEinnahmenUndAusgaben&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`;
+            const finJson = await gmFetchJson(finUrl, { withCredentials: true });
+            const inc = parseFloat(getByPath(finJson, 'clusterDto.monatlicheNettoeinnahmen')) || 0;
+            const exp = parseFloat(getByPath(finJson, 'clusterDto.monatlicheAusgaben')) || 0;
+            const diff = inc - exp;
+            await window.setFieldByIdResolvedValue(pageData, 'FinanzenHH_Ueberschuss_Monat', diff);
+            console.log(`Calculated Ueberschuss: ${inc} - ${exp} = ${diff}`);
+        } catch (calcErr) {
+            if (calcErr.isHaushaltNotActive) throw calcErr;
+            console.error("Calculation for FinanzenHH_Ueberschuss_Monat failed:", calcErr);
+        }
+
+        // 8) Signature Fields: Ort + Date
+        try {
+            const stammdatenUrl = `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=KundeStammdaten&clusterId=0140d6ba-3c7d-4ee3-a918-fa30af996043`;
+            const stammdatenJson = await gmFetchJson(stammdatenUrl, { withCredentials: true });
+            const city = getByPath(stammdatenJson, 'clusterDto.ort') || '';
+
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const signatureValue = city ? `${city}, ${dateStr}` : dateStr;
+
+            const sigFields = ['Unterschriften_Ort_Dat', 'Unterschriften_Ort_Dat-1-', 'Unterschriften_Ort_Dat-2-'];
+            for (const fId of sigFields) {
+                try {
+                    await window.setFieldByIdResolvedValue(pageData, fId, signatureValue);
+                } catch (e) {
+                    // ignore if field not found
+                }
+            }
+        } catch (sigErr) {
+            if (sigErr.isHaushaltNotActive) throw sigErr;
+            console.error("Signature location/date autofill failed:", sigErr);
+        }
+    }
+
+
+    /**
+     * Hauptfunktion, die den gesamten Autofill-Prozess orchestriert.
+     */
+    async function run() {
+        if (!isAutoFill) return;
+        updateOverlay("Starte Autofill...");
+
+        let pageData;
+        const wibiid = decodeBase64Url(qs.get('wibiid') || '').trim();
+
+        try {
+            // Schritt 1: Lade die JSON-Struktur des Dokuments
+            try {
                 const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject("Timeout"), 5000));
                 pageData = await Promise.race([documentJsonPromise, timeoutPromise]);
             } catch (err) {
                 console.log("Interceptor timed out or failed, trying manual fetch...");
-                // FALLBACK: Manual fetch
-                // The API needs 'documentid' (lowercase) or 'documentId'
                 const docId = qs.get('documentid');
                 if (docId) {
                     const fallbackUrl = `https://bm.bp.vertrieb-plattform.de/edocbox/editor/servlet/documentViewer?pAction=load&documentid=${docId}`;
@@ -707,212 +972,42 @@
                 throw new Error('Dokument-Daten konnten nicht geladen werden (Interception und Fallback fehlgeschlagen).');
             }
 
-            // 4) Mappings
-            const apiBase = 'https://startkonzept.bp.vertrieb-plattform.de/api';
-
-
-            console.log(`${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`);
-            const tasks = [
-                // --- EXISTING FIELDS ---
-                {
-                    field: 'Angaben_zum_Gespraech_Beruf1',
-                    url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=KundeStammdaten&clusterId=0140d6ba-3c7d-4ee3-a918-fa30af996043`,
-                    needle: 'clusterDto.beruf'
-                },
-                {
-                    field: 'Profilierung_Kenntnisse_Chbx_Geldmarktfonds',
-                    url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
-                    needle: 'clusterDto.kunde.geldmarktfonds'
-                },
-                {
-                    field: 'Profilierung_Kenntnisse_Chbx_Rentenfonds',
-                    url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
-                    needle: 'clusterDto.kunde.rentenfonds'
-                },
-                {
-                    field: 'Profilierung_Kenntnisse_Chbx_Aktienfonds',
-                    url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
-                    needle: 'clusterDto.kunde.aktienfonds'
-                },
-                {
-                    field: 'Profilierung_Kenntnisse_Chbx_Immofonds',
-                    url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
-                    needle: 'clusterDto.kunde.immobilienfonds'
-                },
-                {
-                    field: 'Profilierung_Kenntnisse_Chbx_GemischteFonds',
-                    url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
-                    needle: 'clusterDto.kunde.gemischtefonds'
-                },
-                {
-                    field: 'Profilierung_Kenntnisse_Chbx_Hedgefonds',
-                    url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
-                    needle: 'clusterDto.kunde.hedgefonds'
-                },
-                {
-                    field: 'Profilierung_Kenntnisse_Chbx_RVoderLV',
-                    url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
-                    needle: 'clusterDto.kunde.versicherungen'
-                },
-                {
-                    field: 'Profilierung_Kenntnisse_Chbx_Keine',
-                    url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
-                    needle: 'clusterDto.kunde.keine'
-                },
-                {
-                    field: 'Profilierung_Kenntnisse_Radio_AnzGesch',
-                    url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
-                    needle: 'clusterDto.kunde.transaktionenAnzahl',
-                    value: 1,
-                },
-                {
-                    field: 'Profilierung_Kenntnisse_Radio_TransWert',
-                    url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvKenntnisseUndErfahrungen&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
-                    needle: 'clusterDto.kunde.transaktionenWert',
-                    value: 1,
-                },
-                {
-                    field: 'Nachhaltigkeit_Beruecksichtigung',
-                    staticValue: true,
-                    position: 'right'
-                },
-                {
-                    field: 'FinanzenHH_Einkommen_Monat',
-                    url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvLaufendeEinnahmenUndAusgaben&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
-                    needle: 'clusterDto.monatlicheNettoeinnahmen',
-                },
-                {
-                    field: 'FinanzenHH_Ausgaben_Monat',
-                    url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvLaufendeEinnahmenUndAusgaben&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
-                    needle: 'clusterDto.monatlicheAusgaben',
-                },
-                {
-                    field: 'FinanzenHH_Ueberschuss_Monat',
-                    skip: true
-                },
-                {
-                    field: 'FinanzenHH_Vermoegen_Liquides',
-                    url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvVermoegenUndVerbindlichkeiten&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
-                    needle: 'clusterDto.liquidesVermoegen'
-                },
-                {
-                    field: 'FinanzenHH_Vermoegen_Immo',
-                    url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvVermoegenUndVerbindlichkeiten&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
-                    needle: 'clusterDto.immobilienVermoegen'
-                },
-                {
-                    field: 'FinanzenHH_Vermoegen_Kapitalanlagen',
-                    url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvVermoegenUndVerbindlichkeiten&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
-                    needle: 'clusterDto.kapitalanlagenVermoegen'
-                },
-                {
-                    field: 'FinanzenHH_Verbindlichkeiten',
-                    url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvVermoegenUndVerbindlichkeiten&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
-                    needle: 'clusterDto.verbindlichkeiten'
-                },
-                {
-                    field: 'FinanzenHH_Aenderungen_Radio',
-                    staticValue: true,
-                    position: 'right'
-                },
-                {
-                    field: 'pep',
-                    staticValue: true,
-                    position: 'left'
-                },
-            ];
-
-            // --- LOGGING NON-AUTOFILLED FIELDS ---
-            const allFieldIds = [];
-            (pageData.pages || []).forEach(p => {
-                const fields = Array.isArray(p.fields) ? p.fields : Object.values(p.fields || {});
-                fields.forEach(f => { if (f && f.id) allFieldIds.push(f.id); });
-            });
-
-            const filledIds = new Set(tasks.map(t => t.field));
-            const notFilled = allFieldIds.filter(id => !filledIds.has(id));
-
-            console.group("Fields NOT Autofilled");
-            console.log("Total fields found:", allFieldIds.length);
-            console.log("Total fields filled:", filledIds.size);
-            console.log("List of unfilled fields:", notFilled);
-            console.groupEnd();
-            // -------------------------------------
-
-            // 5) gewünschte 1s-VerzögerungO
-            await sleep(1000);
-
-            // 6) Execute mappings
-            for (const t of tasks) {
-                try {
-                    if (t.skip) continue;
-
-                    // Allow static values (no API call)
-                    if (t.staticValue !== undefined) {
-                        await window.setFieldByIdResolvedValue(pageData, t.field, t.staticValue, t.position);
-                        continue;
-                    }
-                    const fn = (typeof window.setFieldById === 'function') ? window.setFieldById : null;
-                    if (fn) {
-                        await fn(pageData, t.field, t.url, t.needle, t.position);
-                    }
-                } catch (err) {
-                    if (err.isHaushaltNotActive) throw err;
-                    console.error(`Failed to set field "${t.field}":`, err);
-                }
-            }
-
-            // 7) Special Calculation: Ueberschuss
-            try {
-                const finUrl = `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvLaufendeEinnahmenUndAusgaben&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`;
-                const finJson = await gmFetchJson(finUrl, { withCredentials: true });
-                const inc = parseFloat(getByPath(finJson, 'clusterDto.monatlicheNettoeinnahmen')) || 0;
-                const exp = parseFloat(getByPath(finJson, 'clusterDto.monatlicheAusgaben')) || 0;
-                const diff = inc - exp;
-                await window.setFieldByIdResolvedValue(pageData, 'FinanzenHH_Ueberschuss_Monat', diff);
-                console.log(`Calculated Ueberschuss: ${inc} - ${exp} = ${diff}`);
-            } catch (calcErr) {
-                if (calcErr.isHaushaltNotActive) throw calcErr;
-                console.error("Calculation for FinanzenHH_Ueberschuss_Monat failed:", calcErr);
-            }
-
-            // 8) Signature Fields: Ort + Date
-            try {
-                // Fetch the City
-                const stammdatenUrl = `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=KundeStammdaten&clusterId=0140d6ba-3c7d-4ee3-a918-fa30af996043`;
-                const stammdatenJson = await gmFetchJson(stammdatenUrl, { withCredentials: true });
-                const city = getByPath(stammdatenJson, 'clusterDto.ort') || '';
-
-                // Generate German Date DD.MM.YYYY
-                const now = new Date();
-                const dateStr = now.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-                const signatureValue = city ? `${city}, ${dateStr}` : dateStr;
-
-                const sigFields = ['Unterschriften_Ort_Dat', 'Unterschriften_Ort_Dat-1-', 'Unterschriften_Ort_Dat-2-'];
-                for (const fId of sigFields) {
-                    try {
-                        await window.setFieldByIdResolvedValue(pageData, fId, signatureValue);
-                    } catch (e) {
-                        console.log(`Signature field ${fId} not found or skipped`, e.message);
-                    }
-                }
-            } catch (sigErr) {
-                if (sigErr.isHaushaltNotActive) throw sigErr;
-                console.error("Signature location/date autofill failed:", sigErr);
-            }
+            // Schritt 2: Versuche, das Formular auszufüllen
+            await performAutofill(pageData, wibiid);
 
         } catch (e) {
-            removeOverlay();
+            // Schritt 3: Fehlerbehandlung bei nicht aktivem Haushalt
             if (e && e.isHaushaltNotActive) {
-                alert("Daten nicht verfügbar, bitte Haushalt erst im Startkonzept öffenen und ein Gespräch starten");
+                console.warn("Haushalt ist nicht aktiv. Starte den Aktivierungsprozess...");
+                try {
+                    // Versuche, den Haushalt zu aktivieren
+                    await activateHaushalt(wibiid);
+                    // Wenn die Aktivierung erfolgreich war, versuche das Ausfüllen erneut
+                    console.log("Aktivierung erfolgreich. Starte Autofill erneut.");
+                    updateOverlay("Fülle Formular aus...");
+                    await performAutofill(pageData, wibiid);
+                } catch (activationError) {
+                    // Wenn die Aktivierung fehlschlägt, zeige eine Fehlermeldung
+                    removeOverlay();
+                    console.error('Autofill-Fehler nach fehlgeschlagener Aktivierung:', activationError);
+                    alert('Automatischer Ladevorgang der Kundendaten fehlgeschlagen:\n\n' + (activationError.message || activationError));
+                    return;
+                }
+            } else {
+                // Behandle alle anderen, unerwarteten Fehler
+                removeOverlay();
+                console.error('Autofill script error:', e);
+                alert('Ein unerwarteter Autofill-Fehler ist aufgetreten:\n\n' + (e && e.message ? e.message : String(e)));
                 return;
             }
-            console.error('Autofill script error:', e);
-            alert('Autofill Fehler: ' + (e && e.message ? e.message : e));
-        } finally {
-            removeOverlay();
         }
+
+        // Wenn alles gut ging, schließe das Overlay
+        removeOverlay();
+        console.log("Autofill erfolgreich abgeschlossen.");
     }
+
+    // =================================================================================
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', run, { once: true });
