@@ -15,3 +15,5 @@ jobs:
         password: ${{ secrets.FTP_PASSWORD }}
         server-dir: /html/mopoliti.de/Userscripts/
         local-dir: ./
+        exclude: |
+          **/tecis-chrome-extension/**
