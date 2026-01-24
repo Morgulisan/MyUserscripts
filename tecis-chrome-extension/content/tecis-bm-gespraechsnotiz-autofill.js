@@ -44,9 +44,6 @@ function extensionFetchJson(url, { method = 'GET', headers = {}, body = null, wi
     // Only run this block on the BM list page
     if (!location.href.startsWith("https://bm.bp.vertrieb-plattform.de/bm/")) return;
 
-    // Use the real page window (like @grant none would)
-    const pageWindow = (typeof unsafeWindow !== "undefined") ? unsafeWindow : window;
-
     // -------- URL param helpers --------
     let addAutofillNextOpen = false; // one-shot flag for the next window.open()
 
@@ -75,21 +72,60 @@ function extensionFetchJson(url, { method = 'GET', headers = {}, body = null, wi
         return target.toString();
     }
 
-    // -------- Intercept window.open (covers PrimeFaces flows) --------
-    const _open = pageWindow.open;
-    Object.defineProperty(pageWindow, "open", {
-        configurable: true,
-        writable: true,
-        value: function (url, name, specs, replace) {
-            if (typeof url === "string") {
-                url = appendParams(url, { forceAutofill: addAutofillNextOpen });
-            }
-            // one-shot; reset immediately
-            const ret = _open.call(this, url, name, specs, replace);
-            addAutofillNextOpen = false;
-            return ret;
-        }
-    });
+    // -------- Intercept window.open in page context (covers PrimeFaces flows) --------
+    function injectWindowOpenHook() {
+        const script = document.createElement('script');
+        script.textContent = `
+            (function() {
+                let addAutofillNextOpen = false;
+                function isNormalUrl(u) {
+                    return typeof u === "string" && !/^(?:javascript:|data:|blob:)/i.test(u);
+                }
+                function getCurrentWibiid() {
+                    try { return new URL(location.href).searchParams.get("wibiid"); }
+                    catch { return null; }
+                }
+                function appendParams(u, forceAutofill) {
+                    if (!isNormalUrl(u)) return u;
+                    let target;
+                    try { target = new URL(u, location.href); }
+                    catch { return u; }
+                    const wibiid = getCurrentWibiid();
+                    if (wibiid && !target.searchParams.has("wibiid")) {
+                        target.searchParams.set("wibiid", wibiid);
+                    }
+                    if (forceAutofill) {
+                        target.searchParams.set("autofill", "true");
+                    }
+                    return target.toString();
+                }
+                const originalOpen = window.open;
+                Object.defineProperty(window, "open", {
+                    configurable: true,
+                    writable: true,
+                    value: function(url, name, specs, replace) {
+                        if (typeof url === "string") {
+                            url = appendParams(url, addAutofillNextOpen);
+                        }
+                        const ret = originalOpen.call(this, url, name, specs, replace);
+                        addAutofillNextOpen = false;
+                        return ret;
+                    }
+                });
+                window.addEventListener('message', (event) => {
+                    if (event.source !== window) return;
+                    if (!event.data || event.data.source !== 'tecis-extension') return;
+                    if (event.data.type === 'set-autofill-next-open') {
+                        addAutofillNextOpen = true;
+                    }
+                });
+            })();
+        `;
+        (document.head || document.documentElement).appendChild(script);
+        script.remove();
+    }
+
+    injectWindowOpenHook();
 
     // Also catch plain links that open in a new tab (Ctrl/Meta/middle click)
     function handleLinkNewTab(ev) {
@@ -153,7 +189,8 @@ function extensionFetchJson(url, { method = 'GET', headers = {}, body = null, wi
         // Add a pre-click hook that sets the one-shot autofill flag,
         // then lets the original inline onclick (PrimeFaces.ab(...);return false;) run.
         autofillBtn.addEventListener("click", function () {
-            addAutofillNextOpen = true; // ensure the *next* window.open / link uses autofill=true
+            addAutofillNextOpen = true; // ensure the *next* link uses autofill=true
+            window.postMessage({ source: 'tecis-extension', type: 'set-autofill-next-open' }, '*');
             // Do not preventDefault: we want the original onclick to execute
         }, { capture: true });
 
