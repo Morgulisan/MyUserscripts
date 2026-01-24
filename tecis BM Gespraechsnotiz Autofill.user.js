@@ -952,59 +952,70 @@
         updateOverlay("Starte Autofill...");
 
         let pageData;
-        const wibiid = decodeBase64Url(qs.get('wibiid') || '').trim();
+        const wibiid = decodeBase6url(qs.get('wibiid') || '').trim();
 
+        // Schritt 1: Lade die grundlegenden Dokument-Daten. Dies ist immer notwendig.
         try {
-            // Schritt 1: Lade die JSON-Struktur des Dokuments
-            try {
-                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject("Timeout"), 5000));
-                pageData = await Promise.race([documentJsonPromise, timeoutPromise]);
-            } catch (err) {
-                console.log("Interceptor timed out or failed, trying manual fetch...");
-                const docId = qs.get('documentid');
-                if (docId) {
-                    const fallbackUrl = `https://bm.bp.vertrieb-plattform.de/edocbox/editor/servlet/documentViewer?pAction=load&documentid=${docId}`;
-                    pageData = await gmFetchJson(fallbackUrl, { withCredentials: true });
-                }
-            }
-
-            if (!pageData || !Array.isArray(pageData.pages)) {
-                throw new Error('Dokument-Daten konnten nicht geladen werden (Interception und Fallback fehlgeschlagen).');
-            }
-
-            // Schritt 2: Versuche, das Formular auszufüllen
-            await performAutofill(pageData, wibiid);
-
-        } catch (e) {
-            // Schritt 3: Fehlerbehandlung bei nicht aktivem Haushalt
-            if (e && e.isHaushaltNotActive) {
-                console.warn("Haushalt ist nicht aktiv. Starte den Aktivierungsprozess...");
-                try {
-                    // Versuche, den Haushalt zu aktivieren
-                    await activateHaushalt(wibiid);
-                    // Wenn die Aktivierung erfolgreich war, versuche das Ausfüllen erneut
-                    console.log("Aktivierung erfolgreich. Starte Autofill erneut.");
-                    updateOverlay("Fülle Formular aus...");
-                    await performAutofill(pageData, wibiid);
-                } catch (activationError) {
-                    // Wenn die Aktivierung fehlschlägt, zeige eine Fehlermeldung
-                    removeOverlay();
-                    console.error('Autofill-Fehler nach fehlgeschlagener Aktivierung:', activationError);
-                    alert('Automatischer Ladevorgang der Kundendaten fehlgeschlagen:\n\n' + (activationError.message || activationError));
-                    return;
-                }
-            } else {
-                // Behandle alle anderen, unerwarteten Fehler
-                removeOverlay();
-                console.error('Autofill script error:', e);
-                alert('Ein unerwarteter Autofill-Fehler ist aufgetreten:\n\n' + (e && e.message ? e.message : String(e)));
-                return;
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject("Timeout"), 5000));
+            pageData = await Promise.race([documentJsonPromise, timeoutPromise]);
+        } catch (err) {
+            console.log("Interceptor timed out or failed, trying manual fetch...");
+            const docId = qs.get('documentid');
+            if (docId) {
+                const fallbackUrl = `https://bm.bp.vertrieb-plattform.de/edocbox/editor/servlet/documentViewer?pAction=load&documentid=${docId}`;
+                pageData = await gmFetchJson(fallbackUrl, { withCredentials: true });
             }
         }
 
-        // Wenn alles gut ging, schließe das Overlay
-        removeOverlay();
-        console.log("Autofill erfolgreich abgeschlossen.");
+        if (!pageData || !Array.isArray(pageData.pages)) {
+            removeOverlay();
+            alert('Kritischer Fehler: Die Struktur des Dokuments konnte nicht geladen werden. Autofill abgebrochen.');
+            return;
+        }
+
+        // Schritt 2: VERSUCH (Plan A) - Führe den normalen Autofill-Prozess aus.
+        try {
+            console.log("Autofill: Starte ersten Versuch (Plan A)...");
+            await performAutofill(pageData, wibiid);
+
+            // Wenn wir hier ankommen, war alles erfolgreich.
+            console.log("Autofill: Plan A war erfolgreich. Keine Aktivierung nötig.");
+            removeOverlay();
+            console.log("Autofill erfolgreich abgeschlossen.");
+
+        } catch (error) {
+            // Schritt 3: FEHLERBEHANDLUNG - Plan A ist fehlgeschlagen.
+            // Prüfen, ob es der erwartete Fehler für inaktive Haushalte ist.
+            if (error && error.isHaushaltNotActive) {
+                console.warn("Autofill: Plan A fehlgeschlagen. Grund: Haushalt nicht aktiv. Starte Plan B...");
+
+                // Schritt 4: RETTUNGSAKTION (Plan B) - Aktiviere den Haushalt.
+                try {
+                    await activateHaushalt(wibiid);
+
+                    // Schritt 5: ZWEITER VERSUCH - Führe Autofill erneut aus.
+                    console.log("Autofill: Aktivierung erfolgreich. Starte zweiten Autofill-Versuch.");
+                    updateOverlay("Befüllt Gesprächsnotiz...");
+                    await performAutofill(pageData, wibiid);
+
+                    // Wenn wir hier ankommen, war Plan B erfolgreich.
+                    removeOverlay();
+                    console.log("Autofill erfolgreich nach Aktivierung abgeschlossen.");
+
+                } catch (activationError) {
+                    // Die Aktivierung selbst ist fehlgeschlagen.
+                    removeOverlay();
+                    console.error('Autofill-Fehler: Die automatische Aktivierung ist fehlgeschlagen:', activationError);
+                    alert('Automatischer Ladevorgang der Kundendaten fehlgeschlagen:\n\n' + (activationError.message || activationError));
+                }
+
+            } else {
+                // Ein anderer, unerwarteter Fehler ist aufgetreten.
+                removeOverlay();
+                console.error('Unerwarteter Autofill-Fehler:', error);
+                alert('Ein unerwarteter Autofill-Fehler ist aufgetreten:\n\n' + (error && error.message ? error.message : String(error)));
+            }
+        }
     }
 
     // =================================================================================

@@ -358,7 +358,7 @@ function extensionFetchJson(url, { method = 'GET', headers = {}, body = null, wi
                     return; // Erfolg!
                 }
             } catch (err) {
-                console.warn("Warnung: Fehler beim Abrufen des Lade-Status (Versuch wird fortgesetzt):", err);
+                console.log("Warnung: Fehler beim Abrufen des Lade-Status (Versuch wird fortgesetzt):", err);
             }
         }
 
@@ -950,7 +950,7 @@ function extensionFetchJson(url, { method = 'GET', headers = {}, body = null, wi
         } catch (e) {
             // Schritt 3: Fehlerbehandlung bei nicht aktivem Haushalt
             if (e && e.isHaushaltNotActive) {
-                console.warn("Haushalt ist nicht aktiv. Starte den Aktivierungsprozess...");
+                console.log("Haushalt ist nicht aktiv. Starte den Aktivierungsprozess...");
                 try {
                     // Versuche, den Haushalt zu aktivieren
                     await activateHaushalt(wibiid);

@@ -16,4 +16,4 @@ jobs:
         server-dir: /html/mopoliti.de/Userscripts/
         local-dir: ./
         exclude: |
-          **/tecis-chrome-extension/**
+          **/pars-pro-toto-BM-Autofill-chrome-extension/**
