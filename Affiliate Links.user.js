@@ -18,7 +18,7 @@
         {
             // Regel für Verivox (einfacher String-Vergleich, ersetzt den ganzen Link)
             search: 'https://www.verivox.de/strom-gas',
-            replace: 'IHR_VERIVOX_AFFILIATE_LINK_HIER'
+            replace: 'https://www.verivox.de/strom-gas'
         },
         {
             // SPEZIFISCHE REGEL: Wechselpilot /partner/

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         tecis Dokumente Datenbank
 // @namespace    http://tampermonkey.net/
-// @version      1.8.3
+// @version      1.8.4
 // @description  Vorbefüllte PDFs und Anträge mit einem Click in die Beratungsmappe laden: HEK, hkk, Erhöhungen und Kampagnen
 // @author       Malte Kretzschmar
 // @match        https://bm.bp.vertrieb-plattform.de/bm/*
@@ -43,15 +43,40 @@
     };
     // --- ⬆️ END OF EDITABLE SECTION ⬆️ ---
 
-    // Utility: Wait for an element to appear in the DOM
-    async function waitForElement(selector, timeout = 100000) {
-        const startTime = Date.now();
-        while (Date.now() - startTime < timeout) {
-            const element = document.querySelector(selector);
-            if (element) return element;
-            await new Promise(resolve => setTimeout(resolve, 100));
-        }
-        throw new Error(`Element not found for selector: ${selector}`);
+    function waitForHeaderMatch(selector, expectedText, timeout = 600000) {
+        return new Promise((resolve, reject) => {
+            const startTime = Date.now();
+            let intervalId;
+            const observer = new MutationObserver(() => check());
+
+            const cleanup = () => {
+                observer.disconnect();
+                if (intervalId) {
+                    clearInterval(intervalId);
+                }
+            };
+
+            const check = () => {
+                const header = document.querySelector(selector);
+                if (header && header.textContent.includes(expectedText)) {
+                    cleanup();
+                    resolve(header);
+                    return;
+                }
+                if (Date.now() - startTime > timeout) {
+                    cleanup();
+                    reject(new Error(`Header did not contain "${expectedText}" within timeout.`));
+                }
+            };
+
+            observer.observe(document.documentElement, {
+                childList: true,
+                subtree: true,
+                characterData: true
+            });
+            intervalId = setInterval(check, 1000);
+            check();
+        });
     }
 
     // GM_xmlhttpRequest-based fetch function that returns a Promise
@@ -77,13 +102,9 @@
 
     // Wait for the header that should contain "Eigene Vorgänge"
     try {
-        const header = await waitForElement('#page\\:center\\:content > h1');
-        if (!header.textContent.includes('Eigene Vorgänge')) {
-            console.log('Header does not contain "Eigene Vorgänge". Script not executed.');
-            return;
-        }
+        await waitForHeaderMatch('#page\\:center\\:content > h1', 'Eigene Vorgänge');
     } catch (error) {
-        console.error(error.message);
+        console.warn(error.message);
         return;
     }
 
