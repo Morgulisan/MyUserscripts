@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         tecis BM Provisionsverteilungs Autocomplete
 // @namespace    http://tampermonkey.net/
-// @version      1.0
-// @description  Autocomplete und Quick-Buttons für Provisionsdialog
-// @author       Malte Kretzschmar mit Genini
+// @version      1.1
+// @description  Autocomplete für Provisionsdialog
+// @author       Malte Kretzschmar mit Gemini
 // @match        https://bm.bp.vertrieb-plattform.de/bm/*
 // @grant        none
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
 // ==/UserScript==
 
 (function() {
@@ -23,17 +24,8 @@
         { vp: "763189", name: "Dewei Zheng" }, { vp: "745645", name: "Jan Luca Willms" },
         { vp: "749545", name: "Marko Yi Wei Chen" }, { vp: "739827", name: "Mikayel Martikyan" },
         { vp: "758298", name: "Philipp Bronckhorst" }, { vp: "751463", name: "Thilo Urban" },
-        { vp: "779810 ", name: "Nawied Hamdani-Foyan" }
+        { vp: "779810",  name: "Nawied Hamdani-Foyan" }
     ];
-
-    // Hilfsfunktion zum Setzen von Werten in PrimeFaces/JSF-Inputs
-    function setInputValue(inputEl, value) {
-        if (!inputEl) return;
-        inputEl.value = value;
-        // Trigger Events damit JSF/PrimeFaces merkt, dass sich was getan hat
-        inputEl.dispatchEvent(new Event('input', { bubbles: true }));
-        inputEl.dispatchEvent(new Event('change', { bubbles: true }));
-    }
 
     function setupAutocomplete(nameInput, vpInput) {
         if (!nameInput || nameInput.dataset.helperActive) return;
@@ -51,53 +43,52 @@
         document.body.appendChild(dl);
         nameInput.setAttribute('list', datalistId);
 
-        nameInput.addEventListener('input', (e) => {
+        nameInput.addEventListener('input', async (e) => {
             const selected = PARTNER_DATA.find(p => p.name === e.target.value);
+
             if (selected && vpInput) {
-                setInputValue(vpInput, selected.vp);
+                // Verhindern, dass mehrfache Events gleichzeitig feuern
+                if (nameInput.dataset.isUpdating === 'true') return;
+                nameInput.dataset.isUpdating = 'true';
+
+                // 1. Tippen in das VP-Feld simulieren
+                vpInput.focus();
+                vpInput.value = '';
+                for (let char of selected.vp) {
+                    vpInput.value += char;
+                    vpInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    // Kurze Pause zwischen den Tastenschlägen simulieren
+                    await new Promise(r => setTimeout(r, 20));
+                }
+
+                // 2. Das Change-Event für VP auslösen -> Sendet die VP-Nummer ans Backend
+                vpInput.dispatchEvent(new Event('change', { bubbles: true }));
+                vpInput.blur();
+
+                // 3. WARTEN auf das Backend (PrimeFaces Race-Condition vermeiden)
+                // Wenn wir beide Felder gleichzeitig an den Server schicken, überschreibt das System das jeweils andere Feld.
+                setTimeout(() => {
+                    // DOM könnte durch das AJAX-Update neu geladen worden sein, wir holen uns das Element neu
+                    const currentNameInput = document.getElementById(nameInput.id);
+                    if (currentNameInput) {
+                        currentNameInput.focus();
+                        currentNameInput.value = selected.name;
+                        currentNameInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+                        // Das Change-Event für den Namen auslösen -> Sendet den Namen ans Backend
+                        currentNameInput.dispatchEvent(new Event('change', { bubbles: true }));
+                        currentNameInput.blur();
+                        currentNameInput.dataset.isUpdating = 'false';
+                    }
+                }, 800); // 800 Millisekunden Puffer, damit die erste AJAX-Abfrage sicher durch ist
             }
         });
-    }
-
-    function injectQuickButtons(container, targetPairs) {
-        if (container.querySelector('.quick-partner-bar')) return;
-
-        const bar = document.createElement('div');
-        bar.className = 'quick-partner-bar';
-        bar.style = "padding: 10px; background: #f4f4f4; border-bottom: 1px solid #ccc; display: flex; flex-wrap: wrap; gap: 5px;";
-
-        PARTNER_DATA.forEach(p => {
-            const btn = document.createElement('button');
-            btn.innerText = p.name.split(' ')[0]; // Vorname als Label
-            btn.title = `${p.name} (${p.vp})`;
-            btn.type = "button";
-            btn.style = "cursor: pointer; padding: 2px 8px; font-size: 11px; border: 1px solid #999; border-radius: 3px; background: #fff;";
-
-            btn.onclick = (e) => {
-                e.preventDefault();
-                // Fülle das erste freie Paar oder das aktuell fokussierte
-                const activeEl = document.activeElement;
-                let pair = targetPairs[0]; // Standard: Vertriebspartner
-
-                // Wenn Fokus in einem Splitt-Feld ist, nimm das entsprechende Paar
-                targetPairs.forEach(tp => {
-                    if (activeEl === tp.name || activeEl === tp.vp) pair = tp;
-                });
-
-                setInputValue(pair.name, p.name);
-                setInputValue(pair.vp, p.vp);
-            };
-            bar.appendChild(btn);
-        });
-
-        container.prepend(bar);
     }
 
     function initHelper() {
         const dialog = document.getElementById('ajaxDialog0');
         if (!dialog || dialog.style.visibility === 'hidden') return;
 
-        // IDs aus deinem HTML extrahieren (ACHTUNG: PrimeFaces IDs ändern sich oft am Ende)
         // Wir nutzen Selektoren, die auf den ID-Endungen basieren
         const getEl = (suffix) => dialog.querySelector(`[id$=':${suffix}']`);
 
@@ -107,17 +98,15 @@
             { name: getEl('j_idt2116'), vp: getEl('j_idt2112') }  // 1. Splitt Partner
         ];
 
-        // Autocomplete für alle Paare aktivieren
+        // Autocomplete für alle gefundenen Paare aktivieren
         pairs.forEach(pair => {
-            if (pair.name && pair.vp) setupAutocomplete(pair.name, pair.vp);
+            if (pair.name && pair.vp) {
+                setupAutocomplete(pair.name, pair.vp);
+            }
         });
-
-        // Quick Buttons oben einfügen
-        const content = dialog.querySelector('.ui-dialog-content');
-        if (content) injectQuickButtons(content, pairs);
     }
 
-    // Observer, um auf das Erscheinen des Dialogs zu reagieren (AJAX-sicher)
+    // Observer reagiert, sobald der Dialog aufpoppt (oder AJAX das DOM erneuert)
     const observer = new MutationObserver(() => {
         initHelper();
     });
