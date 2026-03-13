@@ -16,6 +16,9 @@
 (function() {
     'use strict';
     window.addEventListener("load",function (e) {
+
+
+        //TODO im Browserplugin als Menu zum selber auswählen / eintragen
         let team = [
             {name: "775726 Malte Kretzschmar", color: "#ffc107"},
 

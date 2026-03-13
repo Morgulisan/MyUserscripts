@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         tecis tiS Autoselect TopList
 // @namespace    http://tampermonkey.net/
-// @version      0.4
+// @version      0.5
 // @updateURL    https://mopoliti.de/Userscripts/tecis%20Autoselect%20TopList.user.js
 // @description  Add Buttons to autoselect the correct Top-List
 // @author       Malte Kretzschmar
@@ -18,6 +18,8 @@
 
     window.addEventListener("load",function (e) {
 
+
+        //TODO im Browserplugin als Menu zum selber auswählen / eintragen
             let selectables = [
                 {name: "GM Voss", value: 1302},
                 {name: "UBR Handami", value: 1730},
