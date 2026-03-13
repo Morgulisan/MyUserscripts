@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         tecis BM Provisionsverteilungs Autocomplete
 // @namespace    http://tampermonkey.net/
-// @version      1.1
-// @description  Autocomplete für Provisionsdialog
+// @version      1.2
+// @description  Autocomplete für Provisionsteiler Dialog in der BM
 // @author       Malte Kretzschmar mit Gemini
 // @match        https://bm.bp.vertrieb-plattform.de/bm/*
 // @grant        none
@@ -27,6 +27,9 @@
         { vp: "779810",  name: "Nawied Hamdani-Foyan" }
     ];
 
+    // Globale Sperre, die auch AJAX-DOM-Updates überlebt
+    let isUpdating = false;
+
     function setupAutocomplete(nameInput, vpInput) {
         if (!nameInput || nameInput.dataset.helperActive) return;
         nameInput.dataset.helperActive = "true";
@@ -43,45 +46,39 @@
         document.body.appendChild(dl);
         nameInput.setAttribute('list', datalistId);
 
-        nameInput.addEventListener('input', async (e) => {
+        nameInput.addEventListener('input', (e) => {
+            // Wenn gerade ein AJAX-Sync läuft, ignoriere weitere Eingaben
+            if (isUpdating) return;
+
             const selected = PARTNER_DATA.find(p => p.name === e.target.value);
+            if (!selected) return;
 
-            if (selected && vpInput) {
-                // Verhindern, dass mehrfache Events gleichzeitig feuern
-                if (nameInput.dataset.isUpdating === 'true') return;
-                nameInput.dataset.isUpdating = 'true';
+            // Sperre aktivieren
+            isUpdating = true;
 
-                // 1. Tippen in das VP-Feld simulieren
-                vpInput.focus();
-                vpInput.value = '';
-                for (let char of selected.vp) {
-                    vpInput.value += char;
-                    vpInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    // Kurze Pause zwischen den Tastenschlägen simulieren
-                    await new Promise(r => setTimeout(r, 20));
+            // 1. VP Nummer füllen und Change auslösen (teilt dem Backend die VP mit)
+            const currentVpInput = document.getElementById(vpInput.id);
+            if (currentVpInput) {
+                currentVpInput.value = selected.vp;
+                currentVpInput.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
+            // 2. Warten, bis PrimeFaces das Backend-Update verarbeitet hat
+            setTimeout(() => {
+                // Feld neu suchen, da PrimeFaces das HTML evtl. ausgetauscht hat
+                const currentNameInput = document.getElementById(nameInput.id);
+                if (currentNameInput) {
+                    currentNameInput.value = selected.name;
+                    // WICHTIG: Nur 'change' triggern. 'input' würde wieder unsere Funktion auslösen!
+                    currentNameInput.dispatchEvent(new Event('change', { bubbles: true }));
                 }
 
-                // 2. Das Change-Event für VP auslösen -> Sendet die VP-Nummer ans Backend
-                vpInput.dispatchEvent(new Event('change', { bubbles: true }));
-                vpInput.blur();
-
-                // 3. WARTEN auf das Backend (PrimeFaces Race-Condition vermeiden)
-                // Wenn wir beide Felder gleichzeitig an den Server schicken, überschreibt das System das jeweils andere Feld.
+                // Sperre nach einem kurzen Moment wieder aufheben
                 setTimeout(() => {
-                    // DOM könnte durch das AJAX-Update neu geladen worden sein, wir holen uns das Element neu
-                    const currentNameInput = document.getElementById(nameInput.id);
-                    if (currentNameInput) {
-                        currentNameInput.focus();
-                        currentNameInput.value = selected.name;
-                        currentNameInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    isUpdating = false;
+                }, 300);
 
-                        // Das Change-Event für den Namen auslösen -> Sendet den Namen ans Backend
-                        currentNameInput.dispatchEvent(new Event('change', { bubbles: true }));
-                        currentNameInput.blur();
-                        currentNameInput.dataset.isUpdating = 'false';
-                    }
-                }, 800); // 800 Millisekunden Puffer, damit die erste AJAX-Abfrage sicher durch ist
-            }
+            }, 800);
         });
     }
 
@@ -89,7 +86,6 @@
         const dialog = document.getElementById('ajaxDialog0');
         if (!dialog || dialog.style.visibility === 'hidden') return;
 
-        // Wir nutzen Selektoren, die auf den ID-Endungen basieren
         const getEl = (suffix) => dialog.querySelector(`[id$=':${suffix}']`);
 
         const pairs = [
@@ -98,7 +94,6 @@
             { name: getEl('j_idt2116'), vp: getEl('j_idt2112') }  // 1. Splitt Partner
         ];
 
-        // Autocomplete für alle gefundenen Paare aktivieren
         pairs.forEach(pair => {
             if (pair.name && pair.vp) {
                 setupAutocomplete(pair.name, pair.vp);
@@ -106,7 +101,6 @@
         });
     }
 
-    // Observer reagiert, sobald der Dialog aufpoppt (oder AJAX das DOM erneuert)
     const observer = new MutationObserver(() => {
         initHelper();
     });
