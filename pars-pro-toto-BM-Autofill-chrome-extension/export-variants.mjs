@@ -69,6 +69,24 @@ function copyExtensionFiles(targetDir) {
   }
 }
 
+function createZipArchive(sourceDir, zipPath) {
+  if (process.platform === 'win32') {
+    const escapedZipPath = zipPath.replace(/'/g, "''");
+    execFileSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-Command',
+        `Get-ChildItem -Force | Compress-Archive -DestinationPath '${escapedZipPath}' -Force`,
+      ],
+      { cwd: sourceDir, stdio: 'inherit' },
+    );
+    return;
+  }
+
+  execFileSync('zip', ['-qr', zipPath, '.'], { cwd: sourceDir, stdio: 'inherit' });
+}
+
 function buildVariant(baseManifest, variant) {
   const exportName = `${BASE_EXPORT_NAME}-${variant.key}`;
   const variantDir = join(DIST_DIR, exportName);
@@ -91,8 +109,7 @@ function buildVariant(baseManifest, variant) {
   }
 
   writeManifest(variantDir, manifest);
-
-  execFileSync('zip', ['-qr', zipPath, '.'], { cwd: variantDir, stdio: 'inherit' });
+  createZipArchive(variantDir, zipPath);
 
   return { variantDir, zipPath };
 }

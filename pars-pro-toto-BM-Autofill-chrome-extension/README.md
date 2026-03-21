@@ -16,7 +16,7 @@ cd /workspace/MyUserscripts/pars-pro-toto-BM-Autofill-chrome-extension
 node export-variants.mjs
 ```
 
-Oder über npm, z. B. auch bequem in WebStorm:
+Oder über npm, z. B. auch bequem in WebStorm. Unter Windows nutzt das Script intern PowerShell zum Erstellen der ZIP-Dateien, sodass kein separates `zip` installiert sein muss:
 
 ```bash
 cd /workspace/MyUserscripts/pars-pro-toto-BM-Autofill-chrome-extension
