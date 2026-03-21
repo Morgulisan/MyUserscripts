@@ -1,0 +1,7 @@
+{
+  "name": "pars-pro-toto-bm-autofill-chrome-extension",
+  "private": true,
+  "scripts": {
+    "export:variants": "node export-variants.mjs"
+  }
+}
