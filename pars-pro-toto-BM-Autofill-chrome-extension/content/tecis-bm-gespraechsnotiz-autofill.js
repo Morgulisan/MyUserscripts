@@ -1,46 +1,11 @@
-function extensionFetchJson(url, { method = 'GET', headers = {}, body = null, withCredentials = true } = {}) {
-    return new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage(
-            {
-                type: "fetchJson",
-                url,
-                options: {
-                    method,
-                    headers,
-                    body,
-                    credentials: withCredentials ? "include" : "omit"
-                }
-            },
-            (response) => {
-                if (chrome.runtime.lastError) {
-                    reject(new Error(chrome.runtime.lastError.message));
-                    return;
-                }
-                if (!response) {
-                    reject(new Error("No response from background"));
-                    return;
-                }
-                if (response.error) {
-                    reject(new Error(response.error));
-                    return;
-                }
-                if (!response.ok) {
-                    const err = new Error(`HTTP ${response.status} for ${url}`);
-                    err.status = response.status;
-                    err.data = response.data;
-                    reject(err);
-                    return;
-                }
-                resolve(response.data);
-            }
-        );
-    });
-}
+(function () {
+'use strict';
+
+// GENERATED FILE - DO NOT EDIT DIRECTLY.
+// Source of truth lives under src/core and src/adapters.
 
 // ===== Gesprächsnotiz: clone Bearbeiten with Autofill =====
-(function () {
-    "use strict";
-
+function initGespraechsnotizAutofillList({ installWindowOpenHook, signalPageAutofillNextOpen = () => {} }) {
     // Only run this block on the BM list page
     if (!location.href.startsWith("https://bm.bp.vertrieb-plattform.de/bm/")) return;
 
@@ -73,15 +38,14 @@ function extensionFetchJson(url, { method = 'GET', headers = {}, body = null, wi
     }
 
     // -------- Intercept window.open in page context (covers PrimeFaces flows) --------
-    function injectWindowOpenHook() {
-        const script = document.createElement('script');
-        script.src = chrome.runtime.getURL('content/page-window-open-hook.js');
-        script.async = false;
-        (document.head || document.documentElement).appendChild(script);
-        script.onload = () => script.remove();
-    }
-
-    injectWindowOpenHook();
+    installWindowOpenHook({
+        appendParams,
+        consumeAutofillNextOpen: () => {
+            const forceAutofill = addAutofillNextOpen;
+            addAutofillNextOpen = false;
+            return forceAutofill;
+        },
+    });
 
     // Also catch plain links that open in a new tab (Ctrl/Meta/middle click)
     function handleLinkNewTab(ev) {
@@ -146,7 +110,7 @@ function extensionFetchJson(url, { method = 'GET', headers = {}, body = null, wi
         // then lets the original inline onclick (PrimeFaces.ab(...);return false;) run.
         autofillBtn.addEventListener("click", function () {
             addAutofillNextOpen = true; // ensure the *next* link uses autofill=true
-            window.postMessage({ source: 'tecis-extension', type: 'set-autofill-next-open' }, '*');
+            signalPageAutofillNextOpen();
             // Do not preventDefault: we want the original onclick to execute
         }, { capture: true });
 
@@ -173,61 +137,15 @@ function extensionFetchJson(url, { method = 'GET', headers = {}, body = null, wi
     } else {
         scan();
     }
-})();
+}
 
 // ===== BP Editor Autofill (wibiid) =====
-(function () {
-    'use strict';
-
+function initGespraechsnotizAutofillEditor({ fetchJson, createDocumentJsonPromise }) {
     // Only run this block on the editor UI
     if (!location.href.startsWith("https://bm.bp.vertrieb-plattform.de/edocbox/editor/ui/")) return;
 
     // ------- 0. DATA INTERCEPTION (Run immediately) -------
     // We create a promise that resolves when the page loads its own document JSON
-    function createDocumentJsonPromise() {
-        let resolvePromise;
-        const promise = new Promise((resolve) => {
-            resolvePromise = resolve;
-        });
-
-        const handler = (event) => {
-            if (event.source !== window) return;
-            if (!event.data || event.data.source !== 'tecis-extension') return;
-            if (event.data.type !== 'document-json') return;
-            console.log("Autofill: Intercepted document JSON successfully.");
-            resolvePromise(event.data.payload);
-            window.removeEventListener('message', handler);
-        };
-
-        window.addEventListener('message', handler);
-
-        const script = document.createElement('script');
-        script.textContent = `
-            (function() {
-                const originalOpen = XMLHttpRequest.prototype.open;
-                XMLHttpRequest.prototype.open = function(method, url) {
-                    if (typeof url === 'string' && url.includes('pAction=load')) {
-                        this.addEventListener('load', function() {
-                            try {
-                                const json = JSON.parse(this.responseText);
-                                if (json && (json.pages || json.formFields)) {
-                                    window.postMessage({ source: 'tecis-extension', type: 'document-json', payload: json }, '*');
-                                }
-                            } catch (e) {
-                                console.error('Autofill: Failed to parse intercepted JSON', e);
-                            }
-                        });
-                    }
-                    return originalOpen.apply(this, arguments);
-                };
-            })();
-        `;
-        (document.head || document.documentElement).appendChild(script);
-        script.remove();
-
-        return promise;
-    }
-
     const documentJsonPromise = createDocumentJsonPromise();
 
 
@@ -290,7 +208,7 @@ function extensionFetchJson(url, { method = 'GET', headers = {}, body = null, wi
     }
 
     function gmFetchJson(url, { method = 'GET', headers = {}, body = null, withCredentials = true } = {}) {
-        return extensionFetchJson(url, { method, headers, body, withCredentials })
+        return fetchJson(url, { method, headers, body, withCredentials })
             .catch((err) => {
                 if (err.status === 500 && err.data && err.data.errorType === "HAUSHALT_NOT_ACTIVE") {
                     const customErr = new Error("HAUSHALT_NOT_ACTIVE");
@@ -1057,4 +975,93 @@ function extensionFetchJson(url, { method = 'GET', headers = {}, body = null, wi
     } else {
         run();
     }
+
+}
+
+function fetchJson(url, { method = 'GET', headers = {}, body = null, withCredentials = true } = {}) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(
+      {
+        type: 'fetchJson',
+        url,
+        options: {
+          method,
+          headers,
+          body,
+          credentials: withCredentials ? 'include' : 'omit',
+        },
+      },
+      (response) => {
+        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+        if (!response) return reject(new Error('No response from background'));
+        if (response.error) return reject(new Error(response.error));
+        if (!response.ok) {
+          const err = new Error(`HTTP ${response.status} for ${url}`);
+          err.status = response.status;
+          err.data = response.data;
+          return reject(err);
+        }
+        resolve(response.data);
+      },
+    );
+  });
+}
+
+function installWindowOpenHook() {
+  const script = document.createElement('script');
+  script.src = chrome.runtime.getURL('content/page-window-open-hook.js');
+  script.async = false;
+  (document.head || document.documentElement).appendChild(script);
+  script.onload = () => script.remove();
+}
+
+function signalPageAutofillNextOpen() {
+  window.postMessage({ source: 'tecis-extension', type: 'set-autofill-next-open' }, '*');
+}
+
+function createDocumentJsonPromise() {
+  let resolvePromise;
+  const promise = new Promise((resolve) => {
+    resolvePromise = resolve;
+  });
+
+  const handler = (event) => {
+    if (event.source !== window) return;
+    if (!event.data || event.data.source !== 'tecis-extension') return;
+    if (event.data.type !== 'document-json') return;
+    resolvePromise(event.data.payload);
+    window.removeEventListener('message', handler);
+  };
+
+  window.addEventListener('message', handler);
+
+  const script = document.createElement('script');
+  script.textContent = `
+    (function() {
+      const originalOpen = XMLHttpRequest.prototype.open;
+      XMLHttpRequest.prototype.open = function(method, url) {
+        if (typeof url === 'string' && url.includes('pAction=load')) {
+          this.addEventListener('load', function() {
+            try {
+              const json = JSON.parse(this.responseText);
+              if (json && (json.pages || json.formFields)) {
+                window.postMessage({ source: 'tecis-extension', type: 'document-json', payload: json }, '*');
+              }
+            } catch (e) {
+              console.error('Autofill: Failed to parse intercepted JSON', e);
+            }
+          });
+        }
+        return originalOpen.apply(this, arguments);
+      };
+    })();
+  `;
+  (document.head || document.documentElement).appendChild(script);
+  script.remove();
+
+  return promise;
+}
+
+initGespraechsnotizAutofillList({ installWindowOpenHook, signalPageAutofillNextOpen });
+initGespraechsnotizAutofillEditor({ fetchJson, createDocumentJsonPromise });
 })();

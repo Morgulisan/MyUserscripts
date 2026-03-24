@@ -36,3 +36,25 @@ Dateinamen:
 - `dist/pars-pro-toto-bm-autofill-without-affiliate.zip`
 
 Für die Store-Variante wird der `affiliate-links.js`-Eintrag aus `manifest.json` entfernt, damit du Änderungen nicht doppelt pflegen musst.
+
+## Shared source of truth (no manual duplicate edits)
+
+Bearbeite nur noch diese Dateien:
+
+- `src/core/*.core.js`
+- `src/adapters/userscript/*.entry.js`
+- `src/adapters/extension/*.entry.js`
+
+Dann bauen:
+
+```bash
+npm run build:targets
+```
+
+Der Build aktualisiert automatisch **beide bisherigen Zielorte** (damit bestehende Workflows weiterlaufen):
+
+- Userscript-Dateien im Repo-Root (`tecis BM Gespraechsnotiz Autofill.user.js`, `tecis Dokumente Datenbank.user.js`)
+- Extension-Content-Scripts (`content/tecis-bm-gespraechsnotiz-autofill.js`, `content/tecis-dokumente-datenbank.js`)
+- zusätzlich `dist/userscripts/*` und `dist/extension/content/*`
+
+Diese Ziel-Dateien sind generiert und sollten nicht manuell editiert werden.
