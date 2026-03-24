@@ -1,19 +1,27 @@
 name: FTP Deploy
 
-on: [push]
+on:
+  push:
+    branches:
+      - main
+      - master
 
 jobs:
   ftp-deploy:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - name: FTP-Deploy-Action
-      uses: SamKirkland/FTP-Deploy-Action@4.2.0
-      with:
-        server: ${{ secrets.FTP_SERVER }}
-        username: ${{ secrets.FTP_USERNAME }}
-        password: ${{ secrets.FTP_PASSWORD }}
-        server-dir: /html/mopoliti.de/Userscripts/
-        local-dir: ./
-        exclude: |
-          **/pars-pro-toto-BM-Autofill-chrome-extension/**
+      - uses: actions/checkout@v4
+
+      - name: Build shared userscript/extension targets
+        run: npm --prefix pars-pro-toto-BM-Autofill-chrome-extension run build:targets
+
+      - name: FTP-Deploy-Action
+        uses: SamKirkland/FTP-Deploy-Action@4.2.0
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          server-dir: /html/mopoliti.de/Userscripts/
+          local-dir: ./
+          exclude: |
+            **/pars-pro-toto-BM-Autofill-chrome-extension/**
