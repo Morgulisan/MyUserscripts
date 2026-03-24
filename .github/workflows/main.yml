@@ -10,13 +10,13 @@ jobs:
   ftp-deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build shared userscript/extension targets
         run: npm --prefix pars-pro-toto-BM-Autofill-chrome-extension run build:targets
 
       - name: FTP-Deploy-Action
-        uses: SamKirkland/FTP-Deploy-Action@4.2.0
+        uses: SamKirkland/FTP-Deploy-Action@4.3.6
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
