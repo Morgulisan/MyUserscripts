@@ -16,7 +16,7 @@ jobs:
         run: npm --prefix pars-pro-toto-BM-Autofill-chrome-extension run build:targets
 
       - name: FTP-Deploy-Action
-        uses: SamKirkland/FTP-Deploy-Action@4.3.6
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.6
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
