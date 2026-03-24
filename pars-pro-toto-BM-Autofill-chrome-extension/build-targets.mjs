@@ -21,16 +21,16 @@ function read(path) {
 }
 
 function extractUserscriptHeader(source) {
-  const match = source.match(/\/\/ ==UserScript==[\s\S]*?\/\/ ==\/UserScript==\n?/);
+  const match = source.match(/\/\/ ==UserScript==[\s\S]*?\/\/ ==\/UserScript==\r?\n?/);
   return match ? match[0].trimEnd() + '\n\n' : '';
 }
 
 function stripUserscriptHeader(source) {
-  return source.replace(/\/\/ ==UserScript==[\s\S]*?\/\/ ==\/UserScript==\n?\n?/, '');
+  return source.replace(/\/\/ ==UserScript==[\s\S]*?\/\/ ==\/UserScript==\r?\n?\r?\n?/, '');
 }
 
 function stripImports(source) {
-  return source.replace(/^import\s+.+?;\n/gm, '');
+  return source.replace(/^\s*import\s+.+?;\r?$/gm, '');
 }
 
 function stripExports(source) {
