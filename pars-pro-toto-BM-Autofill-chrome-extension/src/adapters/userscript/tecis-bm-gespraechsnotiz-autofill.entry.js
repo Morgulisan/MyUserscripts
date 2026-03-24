@@ -26,11 +26,27 @@ function fetchJson(url, { method = 'GET', headers = {}, body = null } = {}) {
       headers,
       data: body,
       onload: (response) => {
+        const status = typeof response.status === 'number' ? response.status : 200;
+        let parsedResponse;
         try {
-          resolve(JSON.parse(response.responseText));
+          parsedResponse = JSON.parse(response.responseText);
         } catch (error) {
-          reject(error);
+          if (status >= 200 && status < 300) {
+            reject(error);
+            return;
+          }
+          parsedResponse = response.responseText;
         }
+
+        if (status < 200 || status >= 300) {
+          const err = new Error(`HTTP ${status} for ${url}`);
+          err.status = status;
+          err.data = parsedResponse;
+          reject(err);
+          return;
+        }
+
+        resolve(parsedResponse);
       },
       onerror: reject,
     });
