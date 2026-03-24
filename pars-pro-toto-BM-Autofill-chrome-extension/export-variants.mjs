@@ -15,14 +15,14 @@ const VARIANTS = [
   {
     key: 'with-affiliate',
     includeAffiliate: true,
-    manifestName: 'Beratungsmappen Autofill Pars Pro Toto (Affiliate)',
-    descriptionSuffix: 'Enthält den Affiliate-Link-Updater.',
+    manifestName: 'Beratungsmappen Autofill Pars Pro Toto (mit Affiliate)',
+    descriptionSuffix: 'Dokumente Datenbank und BM Gesprächsnotiz Autofill als Browsererweiterung. Mit Affiliate-Link-Updater zur Unterstützung.',
   },
   {
-    key: 'without-affiliate',
+    key: 'plain',
     includeAffiliate: false,
     manifestName: 'Beratungsmappen Autofill Pars Pro Toto',
-    descriptionSuffix: 'Ohne Affiliate-Link-Updater für den Store-Upload.',
+    descriptionSuffix: 'Dokumente Datenbank und BM Gesprächsnotiz Autofill als Browsererweiterung.',
   },
 ];
 
