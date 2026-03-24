@@ -23,7 +23,6 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           server-dir: /html/mopoliti.de/Userscripts/
           local-dir: ./
-          dangerous-clean-slate: true
           exclude: |
             **/.git/**
             **/.github/**
