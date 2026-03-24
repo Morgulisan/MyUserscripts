@@ -106,6 +106,13 @@ function buildVariant(baseManifest, variant) {
     manifest.content_scripts = manifest.content_scripts.filter(
       (script) => !script.js?.includes(AFFILIATE_SCRIPT),
     );
+    manifest.optional_host_permissions = (manifest.optional_host_permissions ?? []).filter(
+      (permission) => permission !== '<all_urls>',
+    );
+    if (manifest.optional_host_permissions.length === 0) {
+      delete manifest.optional_host_permissions;
+    }
+    rmSync(join(variantDir, AFFILIATE_SCRIPT), { force: true });
   }
 
   writeManifest(variantDir, manifest);
