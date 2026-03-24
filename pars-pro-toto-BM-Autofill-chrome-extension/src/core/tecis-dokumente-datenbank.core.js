@@ -281,8 +281,15 @@ export async function initDokumenteDatenbank({ fetchJson, addCss, PDFLibRef = PD
                             try {
                                 let finalValue;
 
+                                // Special virtual data key for today's date in DD.MM.YYYY format.
+                                if (dataKey === '$HEUTE') {
+                                    const today = new Date();
+                                    const dd = String(today.getDate()).padStart(2, '0');
+                                    const mm = String(today.getMonth() + 1).padStart(2, '0');
+                                    const yyyy = today.getFullYear();
+                                    finalValue = `${dd}.${mm}.${yyyy}`;
                                 // First, check if the dataKey from the server is a key in our local concat map.
-                                if (concatenationMap.hasOwnProperty(dataKey)) {
+                                } else if (concatenationMap.hasOwnProperty(dataKey)) {
                                     // It is! Perform the concatenation.
                                     const ruleParts = concatenationMap[dataKey];
                                     const resolvedParts = ruleParts.map(part => {

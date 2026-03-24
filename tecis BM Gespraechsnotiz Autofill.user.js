@@ -13,22 +13,18 @@
 // @connect      startkonzept.bp.vertrieb-plattform.de
 // @connect      mopoliti.de
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
-// @downloadURL  https://mopoliti.de/Userscripts/tecis%20BM%20Gespraechsnotiz%20Autofill.user.js
-// @updateURL    https://mopoliti.de/Userscripts/tecis%20BM%20Gespraechsnotiz%20Autofill.user.js
-// @homepageURL  https://mopoliti.de/Userscripts/
-// @supportURL   https://mopoliti.de/Userscripts/
 // ==/UserScript==
 
+(function () {
+'use strict';
+
+// GENERATED FILE - DO NOT EDIT DIRECTLY.
+// Source of truth lives under src/core and src/adapters.
 
 // ===== Gesprächsnotiz: clone Bearbeiten with Autofill =====
-(function () {
-    "use strict";
-
+function initGespraechsnotizAutofillList({ installWindowOpenHook, signalPageAutofillNextOpen = () => {} }) {
     // Only run this block on the BM list page
     if (!location.href.startsWith("https://bm.bp.vertrieb-plattform.de/bm/")) return;
-
-    // Use the real page window (like @grant none would)
-    const pageWindow = (typeof unsafeWindow !== "undefined") ? unsafeWindow : window;
 
     // -------- URL param helpers --------
     let addAutofillNextOpen = false; // one-shot flag for the next window.open()
@@ -58,20 +54,14 @@
         return target.toString();
     }
 
-    // -------- Intercept window.open (covers PrimeFaces flows) --------
-    const _open = pageWindow.open;
-    Object.defineProperty(pageWindow, "open", {
-        configurable: true,
-        writable: true,
-        value: function (url, name, specs, replace) {
-            if (typeof url === "string") {
-                url = appendParams(url, { forceAutofill: addAutofillNextOpen });
-            }
-            // one-shot; reset immediately
-            const ret = _open.call(this, url, name, specs, replace);
+    // -------- Intercept window.open in page context (covers PrimeFaces flows) --------
+    installWindowOpenHook({
+        appendParams,
+        consumeAutofillNextOpen: () => {
+            const forceAutofill = addAutofillNextOpen;
             addAutofillNextOpen = false;
-            return ret;
-        }
+            return forceAutofill;
+        },
     });
 
     // Also catch plain links that open in a new tab (Ctrl/Meta/middle click)
@@ -136,7 +126,8 @@
         // Add a pre-click hook that sets the one-shot autofill flag,
         // then lets the original inline onclick (PrimeFaces.ab(...);return false;) run.
         autofillBtn.addEventListener("click", function () {
-            addAutofillNextOpen = true; // ensure the *next* window.open / link uses autofill=true
+            addAutofillNextOpen = true; // ensure the *next* link uses autofill=true
+            signalPageAutofillNextOpen();
             // Do not preventDefault: we want the original onclick to execute
         }, { capture: true });
 
@@ -163,41 +154,16 @@
     } else {
         scan();
     }
-})();
+}
 
 // ===== BP Editor Autofill (wibiid) =====
-(function () {
-    'use strict';
-
+function initGespraechsnotizAutofillEditor({ fetchJson, createDocumentJsonPromise }) {
     // Only run this block on the editor UI
     if (!location.href.startsWith("https://bm.bp.vertrieb-plattform.de/edocbox/editor/ui/")) return;
 
     // ------- 0. DATA INTERCEPTION (Run immediately) -------
     // We create a promise that resolves when the page loads its own document JSON
-    let docJsonResolve;
-    const documentJsonPromise = new Promise((resolve) => { docJsonResolve = resolve; });
-
-    // Monkey-patch XMLHttpRequest to spy on the document load
-    const originalOpen = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function (method, url) {
-        // Check if this request is for the document viewer load action
-        // The URL usually contains "servlet/documentViewer?pAction=load"
-        if (typeof url === 'string' && url.includes('pAction=load')) {
-            this.addEventListener('load', function () {
-                try {
-                    const json = JSON.parse(this.responseText);
-                    // Simple validation to ensure it's the document definition
-                    if (json && (json.pages || json.formFields)) {
-                        console.log("Autofill: Intercepted document JSON successfully.");
-                        docJsonResolve(json);
-                    }
-                } catch (e) {
-                    console.error("Autofill: Failed to parse intercepted JSON", e);
-                }
-            });
-        }
-        return originalOpen.apply(this, arguments);
-    };
+    const documentJsonPromise = createDocumentJsonPromise();
 
 
     // ------- Small utilities -------
@@ -258,75 +224,16 @@
         }
     }
 
-    // Use GM.xmlHttpRequest if available; fallback to same-origin fetch
     function gmFetchJson(url, { method = 'GET', headers = {}, body = null, withCredentials = true } = {}) {
-        return new Promise((resolve, reject) => {
-            const xhrFn = (typeof GM !== 'undefined' && GM.xmlHttpRequest) ? GM.xmlHttpRequest :
-                (typeof GM_xmlHttpRequest !== 'undefined' ? GM_xmlHttpRequest : null);
-
-            if (xhrFn) {
-                xhrFn({
-                    method,
-                    url,
-                    headers,
-                    data: body,
-                    responseType: 'json',
-                    timeout: 60_000,
-                    withCredentials,
-                    onload: (res) => {
-                        try {
-                            if (res.status >= 200 && res.status < 300) {
-                                const data = (res.response && typeof res.response === 'object')
-                                    ? res.response
-                                    : JSON.parse(res.responseText || '{}');
-                                resolve(data);
-                            } else {
-                                // Specific 500 error check
-                                if (res.status === 500) {
-                                    try {
-                                        const errData = (res.response && typeof res.response === 'object')
-                                            ? res.response
-                                            : JSON.parse(res.responseText || '{}');
-                                        if (errData.errorType === "HAUSHALT_NOT_ACTIVE") {
-                                            const customErr = new Error("HAUSHALT_NOT_ACTIVE");
-                                            customErr.isHaushaltNotActive = true;
-                                            reject(customErr);
-                                            return;
-                                        }
-                                    } catch(e) { }
-                                }
-                                reject(new Error(`HTTP ${res.status} for ${url}`));
-                            }
-                        } catch (err) { reject(err); }
-                    },
-                    onerror: () => reject(new Error(`Network error for ${url}`)),
-                    ontimeout: () => reject(new Error(`Timeout for ${url}`))
-                });
-            } else {
-                fetch(url, {
-                    method,
-                    headers,
-                    body,
-                    credentials: withCredentials ? 'include' : 'same-origin'
-                }).then(async (r) => {
-                    if (!r.ok) {
-                        // Specific 500 error check for fetch
-                        if (r.status === 500) {
-                            try {
-                                const errData = await r.clone().json();
-                                if (errData.errorType === "HAUSHALT_NOT_ACTIVE") {
-                                    const customErr = new Error("HAUSHALT_NOT_ACTIVE");
-                                    customErr.isHaushaltNotActive = true;
-                                    throw customErr;
-                                }
-                            } catch(e) { if(e.isHaushaltNotActive) throw e; }
-                        }
-                        throw new Error(`HTTP ${r.status} for ${url}`);
-                    }
-                    resolve(await r.json());
-                }).catch(reject);
-            }
-        });
+        return fetchJson(url, { method, headers, body, withCredentials })
+            .catch((err) => {
+                if (err.status === 500 && err.data && err.data.errorType === "HAUSHALT_NOT_ACTIVE") {
+                    const customErr = new Error("HAUSHALT_NOT_ACTIVE");
+                    customErr.isHaushaltNotActive = true;
+                    throw customErr;
+                }
+                throw err;
+            });
     }
 
     // --- NEU: Funktion zur Aktivierung des Haushalts im Startkonzept ---
@@ -386,7 +293,7 @@
                     return; // Erfolg!
                 }
             } catch (err) {
-                console.warn("Warnung: Fehler beim Abrufen des Lade-Status (Versuch wird fortgesetzt):", err);
+                console.log("Warnung: Fehler beim Abrufen des Lade-Status (Versuch wird fortgesetzt):", err);
             }
         }
 
@@ -832,40 +739,7 @@
                 url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvLaufendeEinnahmenUndAusgaben&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
                 needle: 'clusterDto.monatlicheAusgaben',
             },
-            {
-                field: 'FinanzenHH_Ueberschuss_Monat',
-                skip: true
-            },
-            {
-                field: 'FinanzenHH_Vermoegen_Liquides',
-                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvVermoegenUndVerbindlichkeiten&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
-                needle: 'clusterDto.liquidesVermoegen'
-            },
-            {
-                field: 'FinanzenHH_Vermoegen_Immo',
-                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvVermoegenUndVerbindlichkeiten&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
-                needle: 'clusterDto.immobilienVermoegen'
-            },
-            {
-                field: 'FinanzenHH_Vermoegen_Kapitalanlagen',
-                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvVermoegenUndVerbindlichkeiten&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
-                needle: 'clusterDto.kapitalanlagenVermoegen'
-            },
-            {
-                field: 'FinanzenHH_Verbindlichkeiten',
-                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvVermoegenUndVerbindlichkeiten&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
-                needle: 'clusterDto.verbindlichkeiten'
-            },
-            {
-                field: 'FinanzenHH_Aenderungen_Radio',
-                staticValue: true,
-                position: 'right'
-            },
-            {
-                field: 'pep',
-                staticValue: true,
-                position: 'left'
-            },
+            // --- EINKOMMENS HERKUNFT CHECKBOXEN ---
             {
                 field: 'FinanzenHH_Einkommen_Chbx_Gehalt',
                 url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvLaufendeEinnahmenUndAusgaben&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
@@ -901,6 +775,40 @@
                 url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvLaufendeEinnahmenUndAusgaben&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
                 needle: 'clusterDto.herkuenfteEinnahmen',
                 contains: 'Sonstiges'
+            },
+            {
+                field: 'FinanzenHH_Ueberschuss_Monat',
+                skip: true
+            },
+            {
+                field: 'FinanzenHH_Vermoegen_Liquides',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvVermoegenUndVerbindlichkeiten&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.liquidesVermoegen'
+            },
+            {
+                field: 'FinanzenHH_Vermoegen_Immo',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvVermoegenUndVerbindlichkeiten&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.immobilienVermoegen'
+            },
+            {
+                field: 'FinanzenHH_Vermoegen_Kapitalanlagen',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvVermoegenUndVerbindlichkeiten&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.kapitalanlagenVermoegen'
+            },
+            {
+                field: 'FinanzenHH_Verbindlichkeiten',
+                url: `${apiBase}/haushalt/${encodeURIComponent(wibiid)}/clusters?clusterType=AvVermoegenUndVerbindlichkeiten&clusterId=9c635702-2ea2-4190-942a-2cea750c46e1`,
+                needle: 'clusterDto.verbindlichkeiten'
+            },
+            {
+                field: 'FinanzenHH_Aenderungen_Radio',
+                staticValue: true,
+                position: 'right'
+            },
+            {
+                field: 'pep',
+                staticValue: true,
+                position: 'left'
             },
         ];
 
@@ -958,7 +866,6 @@
                 if (val !== undefined) {
                     await window.setFieldByIdResolvedValue(pageData, t.field, val, t.position);
                 }
-
             } catch (err) {
                 if (err.isHaushaltNotActive) throw err;
                 console.error(`Failed to set field "${t.field}":`, err);
@@ -1012,7 +919,7 @@
         updateOverlay("Starte Autofill...");
 
         let pageData;
-        const wibiid = decodeBase6url(qs.get('wibiid') || '').trim();
+        const wibiid = decodeBase64Url(qs.get('wibiid') || '').trim();
 
         // Schritt 1: Lade die grundlegenden Dokument-Daten. Dies ist immer notwendig.
         try {
@@ -1085,4 +992,70 @@
     } else {
         run();
     }
+
+}
+
+function fetchJson(url, { method = 'GET', headers = {}, body = null } = {}) {
+  const gmRequest = (typeof GM !== 'undefined' && GM.xmlHttpRequest) ? GM.xmlHttpRequest : GM_xmlhttpRequest;
+  return new Promise((resolve, reject) => {
+    gmRequest({
+      method,
+      url,
+      headers,
+      data: body,
+      onload: (response) => {
+        try {
+          resolve(JSON.parse(response.responseText));
+        } catch (error) {
+          reject(error);
+        }
+      },
+      onerror: reject,
+    });
+  });
+}
+
+function installWindowOpenHook({ appendParams, consumeAutofillNextOpen }) {
+  const pageWindow = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+  const originalOpen = pageWindow.open;
+  Object.defineProperty(pageWindow, 'open', {
+    configurable: true,
+    writable: true,
+    value(url, name, specs, replace) {
+      if (typeof url === 'string') {
+        url = appendParams(url, { forceAutofill: consumeAutofillNextOpen() });
+      }
+      return originalOpen.call(this, url, name, specs, replace);
+    },
+  });
+}
+
+function createDocumentJsonPromise() {
+  let resolvePromise;
+  const promise = new Promise((resolve) => {
+    resolvePromise = resolve;
+  });
+
+  const originalOpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function (method, url) {
+    if (typeof url === 'string' && url.includes('pAction=load')) {
+      this.addEventListener('load', function () {
+        try {
+          const json = JSON.parse(this.responseText);
+          if (json && (json.pages || json.formFields)) {
+            resolvePromise(json);
+          }
+        } catch (error) {
+          console.error('Autofill: Failed to parse intercepted JSON', error);
+        }
+      });
+    }
+    return originalOpen.apply(this, arguments);
+  };
+
+  return promise;
+}
+
+initGespraechsnotizAutofillList({ installWindowOpenHook });
+initGespraechsnotizAutofillEditor({ fetchJson, createDocumentJsonPromise });
 })();

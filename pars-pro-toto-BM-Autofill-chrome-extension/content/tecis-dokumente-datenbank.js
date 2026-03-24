@@ -1,14 +1,13 @@
-(async function() {
-    'use strict';
+(function () {
+'use strict';
 
-    function addStyle(cssText) {
-        const style = document.createElement('style');
-        style.textContent = cssText;
-        document.head.appendChild(style);
-    }
+// GENERATED FILE - DO NOT EDIT DIRECTLY.
+// Source of truth lives under src/core and src/adapters.
+
+async function initDokumenteDatenbank({ fetchJson, addCss, PDFLibRef = PDFLib }) {
 
     try {
-        addStyle(`
+        addCss(`
         div.awd-content-fixed { top: 80px !important; }
         div.awd-concept-title-buttons { height: 85px !important; }
     `);
@@ -16,7 +15,7 @@
 
     }
 
-    const { PDFDocument } = PDFLib;
+    const { PDFDocument } = PDFLibRef;
 
     // --- ⬇️ EDIT THIS SECTION FOR CONCATENATION RULES ⬇️ ---
     // This map defines reusable concatenation rules. The server can refer to these
@@ -66,46 +65,6 @@
         });
     }
 
-    // Extension background fetch helper that returns JSON
-    function extensionFetchJson(url, { method = "GET", headers = {}, body = null, withCredentials = true } = {}) {
-        return new Promise((resolve, reject) => {
-            chrome.runtime.sendMessage(
-                {
-                    type: "fetchJson",
-                    url,
-                    options: {
-                        method,
-                        headers,
-                        body,
-                        credentials: withCredentials ? "include" : "omit"
-                    }
-                },
-                (response) => {
-                    if (chrome.runtime.lastError) {
-                        reject(new Error(chrome.runtime.lastError.message));
-                        return;
-                    }
-                    if (!response) {
-                        reject(new Error("No response from background"));
-                        return;
-                    }
-                    if (response.error) {
-                        reject(new Error(response.error));
-                        return;
-                    }
-                    if (!response.ok) {
-                        const err = new Error(`HTTP ${response.status} for ${url}`);
-                        err.status = response.status;
-                        err.data = response.data;
-                        reject(err);
-                        return;
-                    }
-                    resolve(response.data);
-                }
-            );
-        });
-    }
-
     // Wait for the header that should contain "Eigene Vorgänge"
     try {
         await waitForHeaderMatch('#page\\:center\\:content > h1', 'Eigene Vorgänge');
@@ -118,7 +77,7 @@
     const pdfTemplatesUrl = 'https://mopoliti.de/tecis/Store/get_pdf_templates.php';
     let pdfTemplates = [];
     try {
-        const data = await extensionFetchJson(pdfTemplatesUrl);
+        const data = await fetchJson(pdfTemplatesUrl);
         if (data.status === 'success' && Array.isArray(data.templates)) {
             pdfTemplates = data.templates;
         } else {
@@ -142,7 +101,7 @@
     const personalDataUrl = 'https://www.crm.vertrieb-plattform.de/kundendetails-personalien/api/personalien/person/' + customerID + '?betreuerNr=' + beraterID;
     let personalData = {};
     try {
-        const personalDataJson = await extensionFetchJson(personalDataUrl);
+        const personalDataJson = await fetchJson(personalDataUrl);
         if (personalDataJson && Array.isArray(personalDataJson.resultData) && personalDataJson.resultData.length > 0) {
             personalData = personalDataJson.resultData[0];
         } else {
@@ -289,7 +248,7 @@
                     // *** NEW: Fetch the PDF file on demand ***
                     let pdfData;
                     try {
-                        pdfData = await extensionFetchJson(template.pdf_url);
+                        pdfData = await fetchJson(template.pdf_url);
                         if (pdfData.status !== 'success' || !pdfData.pdf) {
                             throw new Error(pdfData.message || 'Error fetching PDF file');
                         }
@@ -328,8 +287,15 @@
                             try {
                                 let finalValue;
 
+                                // Special virtual data key for today's date in DD.MM.YYYY format.
+                                if (dataKey === '$HEUTE') {
+                                    const today = new Date();
+                                    const dd = String(today.getDate()).padStart(2, '0');
+                                    const mm = String(today.getMonth() + 1).padStart(2, '0');
+                                    const yyyy = today.getFullYear();
+                                    finalValue = `${dd}.${mm}.${yyyy}`;
                                 // First, check if the dataKey from the server is a key in our local concat map.
-                                if (concatenationMap.hasOwnProperty(dataKey)) {
+                                } else if (concatenationMap.hasOwnProperty(dataKey)) {
                                     // It is! Perform the concatenation.
                                     const ruleParts = concatenationMap[dataKey];
                                     const resolvedParts = ruleParts.map(part => {
@@ -474,4 +440,43 @@
         return current;
     }
 
+
+}
+
+function fetchJson(url, { method = 'GET', headers = {}, body = null, withCredentials = true } = {}) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(
+      {
+        type: 'fetchJson',
+        url,
+        options: {
+          method,
+          headers,
+          body,
+          credentials: withCredentials ? 'include' : 'omit',
+        },
+      },
+      (response) => {
+        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+        if (!response) return reject(new Error('No response from background'));
+        if (response.error) return reject(new Error(response.error));
+        if (!response.ok) {
+          const err = new Error(`HTTP ${response.status} for ${url}`);
+          err.status = response.status;
+          err.data = response.data;
+          return reject(err);
+        }
+        resolve(response.data);
+      },
+    );
+  });
+}
+
+function addCss(cssText) {
+  const style = document.createElement('style');
+  style.textContent = cssText;
+  document.head.appendChild(style);
+}
+
+initDokumenteDatenbank({ fetchJson, addCss });
 })();

@@ -6,22 +6,24 @@
 // @author       Malte Kretzschmar
 // @match        https://bm.bp.vertrieb-plattform.de/bm/*
 // @grant        GM_xmlhttpRequest
+// @grant        GM.xmlHttpRequest
 // @grant        GM_addStyle
 // @connect      mopoliti.de
 // @connect      www.crm.vertrieb-plattform.de
 // @require      https://mopoliti.de/Userscripts/libraries/pdf-lib.js
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
-// @downloadURL  https://mopoliti.de/Userscripts/tecis%20Dokumente%20Datenbank.user.js
-// @updateURL    https://mopoliti.de/Userscripts/tecis%20Dokumente%20Datenbank.user.js
-// @homepageURL  https://mopoliti.de/Userscripts/
-// @supportURL   https://mopoliti.de/Userscripts/
 // ==/UserScript==
 
-(async function() {
-    'use strict';
+(function () {
+'use strict';
+
+// GENERATED FILE - DO NOT EDIT DIRECTLY.
+// Source of truth lives under src/core and src/adapters.
+
+async function initDokumenteDatenbank({ fetchJson, addCss, PDFLibRef = PDFLib }) {
 
     try {
-        GM_addStyle(`
+        addCss(`
         div.awd-content-fixed { top: 80px !important; }
         div.awd-concept-title-buttons { height: 85px !important; }
     `);
@@ -29,7 +31,7 @@
 
     }
 
-    const { PDFDocument } = PDFLib;
+    const { PDFDocument } = PDFLibRef;
 
     // --- ⬇️ EDIT THIS SECTION FOR CONCATENATION RULES ⬇️ ---
     // This map defines reusable concatenation rules. The server can refer to these
@@ -79,27 +81,6 @@
         });
     }
 
-    // GM_xmlhttpRequest-based fetch function that returns a Promise
-    function gmFetch(url) {
-        return new Promise((resolve, reject) => {
-            GM_xmlhttpRequest({
-                method: "GET",
-                url: url,
-                onload: function(response) {
-                    try {
-                        const data = JSON.parse(response.responseText);
-                        resolve(data);
-                    } catch (e) {
-                        reject(e);
-                    }
-                },
-                onerror: function(err) {
-                    reject(err);
-                }
-            });
-        });
-    }
-
     // Wait for the header that should contain "Eigene Vorgänge"
     try {
         await waitForHeaderMatch('#page\\:center\\:content > h1', 'Eigene Vorgänge');
@@ -112,7 +93,7 @@
     const pdfTemplatesUrl = 'https://mopoliti.de/tecis/Store/get_pdf_templates.php';
     let pdfTemplates = [];
     try {
-        const data = await gmFetch(pdfTemplatesUrl);
+        const data = await fetchJson(pdfTemplatesUrl);
         if (data.status === 'success' && Array.isArray(data.templates)) {
             pdfTemplates = data.templates;
         } else {
@@ -136,7 +117,7 @@
     const personalDataUrl = 'https://www.crm.vertrieb-plattform.de/kundendetails-personalien/api/personalien/person/' + customerID + '?betreuerNr=' + beraterID;
     let personalData = {};
     try {
-        const personalDataJson = await gmFetch(personalDataUrl);
+        const personalDataJson = await fetchJson(personalDataUrl);
         if (personalDataJson && Array.isArray(personalDataJson.resultData) && personalDataJson.resultData.length > 0) {
             personalData = personalDataJson.resultData[0];
         } else {
@@ -283,7 +264,7 @@
                     // *** NEW: Fetch the PDF file on demand ***
                     let pdfData;
                     try {
-                        pdfData = await gmFetch(template.pdf_url);
+                        pdfData = await fetchJson(template.pdf_url);
                         if (pdfData.status !== 'success' || !pdfData.pdf) {
                             throw new Error(pdfData.message || 'Error fetching PDF file');
                         }
@@ -322,8 +303,15 @@
                             try {
                                 let finalValue;
 
+                                // Special virtual data key for today's date in DD.MM.YYYY format.
+                                if (dataKey === '$HEUTE') {
+                                    const today = new Date();
+                                    const dd = String(today.getDate()).padStart(2, '0');
+                                    const mm = String(today.getMonth() + 1).padStart(2, '0');
+                                    const yyyy = today.getFullYear();
+                                    finalValue = `${dd}.${mm}.${yyyy}`;
                                 // First, check if the dataKey from the server is a key in our local concat map.
-                                if (concatenationMap.hasOwnProperty(dataKey)) {
+                                } else if (concatenationMap.hasOwnProperty(dataKey)) {
                                     // It is! Perform the concatenation.
                                     const ruleParts = concatenationMap[dataKey];
                                     const resolvedParts = ruleParts.map(part => {
@@ -468,4 +456,38 @@
         return current;
     }
 
+
+}
+
+function fetchJson(url, { method = 'GET', headers = {}, body = null } = {}) {
+  const gmRequest = (typeof GM !== 'undefined' && GM.xmlHttpRequest) ? GM.xmlHttpRequest : GM_xmlhttpRequest;
+  return new Promise((resolve, reject) => {
+    gmRequest({
+      method,
+      url,
+      headers,
+      data: body,
+      onload: (response) => {
+        try {
+          resolve(JSON.parse(response.responseText));
+        } catch (error) {
+          reject(error);
+        }
+      },
+      onerror: reject,
+    });
+  });
+}
+
+function addCss(cssText) {
+  if (typeof GM_addStyle === 'function') {
+    GM_addStyle(cssText);
+    return;
+  }
+  const style = document.createElement('style');
+  style.textContent = cssText;
+  document.head.appendChild(style);
+}
+
+initDokumenteDatenbank({ fetchJson, addCss });
 })();
