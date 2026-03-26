@@ -5,11 +5,16 @@
         return typeof u === "string" && !/^(?:javascript:|data:|blob:)/i.test(u);
     }
 
-    function getCurrentWibiid() {
+    function getCurrentContextParams() {
         try {
-            return new URL(location.href).searchParams.get("wibiid");
+            const params = new URL(location.href).searchParams;
+            return {
+                wibiid: params.get("wibiid"),
+                svhvnr: params.get("svhvnr"),
+                verkaufsbegleiter: params.get("verkaufsbegleiter")
+            };
         } catch {
-            return null;
+            return {};
         }
     }
 
@@ -22,9 +27,15 @@
             return u;
         }
 
-        const wibiid = getCurrentWibiid();
-        if (wibiid && !target.searchParams.has("wibiid")) {
-            target.searchParams.set("wibiid", wibiid);
+        const context = getCurrentContextParams();
+        if (context.wibiid && !target.searchParams.has("wibiid")) {
+            target.searchParams.set("wibiid", context.wibiid);
+        }
+        if (context.svhvnr && !target.searchParams.has("svhvnr")) {
+            target.searchParams.set("svhvnr", context.svhvnr);
+        }
+        if (context.verkaufsbegleiter && !target.searchParams.has("verkaufsbegleiter")) {
+            target.searchParams.set("verkaufsbegleiter", context.verkaufsbegleiter);
         }
         if (forceAutofill) {
             target.searchParams.set("autofill", "true");
