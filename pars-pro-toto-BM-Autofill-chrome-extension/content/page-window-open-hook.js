@@ -46,11 +46,17 @@
         }
     });
 
+    function setAutofillNextOpen() {
+        addAutofillNextOpen = true;
+    }
+
     window.addEventListener('message', (event) => {
-        if (event.source !== window) return;
+        // In some Chrome extension contexts `event.source` can be null.
         if (!event.data || event.data.source !== 'tecis-extension') return;
         if (event.data.type === 'set-autofill-next-open') {
-            addAutofillNextOpen = true;
+            setAutofillNextOpen();
         }
     });
+
+    window.addEventListener('tecis-extension:set-autofill-next-open', setAutofillNextOpen);
 })();
