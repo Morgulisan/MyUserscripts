@@ -137,7 +137,11 @@ async function initDokumenteDatenbank({ fetchJson, addCss, PDFLibRef = PDFLib })
             event.preventDefault();
 
             // --- A helper to perform an action with retries ---
-            async function performAction(action, retries = 3) {
+            async function performAction(action, {
+                retries = 3,
+                delayMs = 500,
+                backoffFactor = 1
+            } = {}) {
                 for (let attempt = 0; attempt < retries; attempt++) {
                     try {
                         await action();
@@ -145,13 +149,36 @@ async function initDokumenteDatenbank({ fetchJson, addCss, PDFLibRef = PDFLib })
                     } catch (error) {
                         console.error(`Attempt ${attempt + 1} failed:`, error);
                         if (attempt < retries - 1) {
-                            await new Promise(resolve => setTimeout(resolve, 500));
+                            const waitMs = Math.round(delayMs * (backoffFactor ** attempt));
+                            await new Promise(resolve => setTimeout(resolve, waitMs));
                         } else {
                             console.error("All retries failed.");
                             return false;
                         }
                     }
                 }
+            }
+
+            async function performActionWithResult(action, {
+                retries = 3,
+                delayMs = 500,
+                backoffFactor = 1
+            } = {}) {
+                for (let attempt = 0; attempt < retries; attempt++) {
+                    try {
+                        return await action();
+                    } catch (error) {
+                        console.error(`Attempt ${attempt + 1} failed:`, error);
+                        if (attempt < retries - 1) {
+                            const waitMs = Math.round(delayMs * (backoffFactor ** attempt));
+                            await new Promise(resolve => setTimeout(resolve, waitMs));
+                        } else {
+                            console.error("All retries failed.");
+                            return null;
+                        }
+                    }
+                }
+                return null;
             }
 
             // --- Sequential UI interactions ---
@@ -241,22 +268,21 @@ async function initDokumenteDatenbank({ fetchJson, addCss, PDFLibRef = PDFLib })
                 });
 
                 // Step 5: Fetch and process the PDF file upload
-                await performAction(async () => {
+                const uploadPrepared = await performAction(async () => {
                     const fileInput = document.querySelector("#dialogForm0\\:fileUpload_anschreibenantrag_input");
                     if (!fileInput) throw new Error("File input element not found.");
 
-                    // *** NEW: Fetch the PDF file on demand ***
-                    let pdfData;
-                    try {
-                        pdfData = await fetchJson(template.pdf_url);
-                        if (pdfData.status !== 'success' || !pdfData.pdf) {
-                            throw new Error(pdfData.message || 'Error fetching PDF file');
+                    const waitFor = async (predicate, {
+                        timeoutMs = 8000,
+                        intervalMs = 100
+                    } = {}) => {
+                        const start = Date.now();
+                        while (Date.now() - start < timeoutMs) {
+                            if (predicate()) return;
+                            await wait(intervalMs);
                         }
-                    } catch (err) {
-                        console.error('Error fetching PDF file:', err);
-                        return;
-                    }
-                    const pdfBase64 = pdfData.pdf;
+                        throw new Error('Timeout while waiting for condition.');
+                    };
 
                     // Convert the stored Base64 PDF into a Blob
                     function base64ToBlob(base64, contentType = 'application/pdf') {
@@ -268,7 +294,22 @@ async function initDokumenteDatenbank({ fetchJson, addCss, PDFLibRef = PDFLib })
                         const byteArray = new Uint8Array(byteNumbers);
                         return new Blob([byteArray], { type: contentType });
                     }
-                    let pdfBlob = base64ToBlob(pdfBase64, 'application/pdf');
+                    const fetchPdfBlob = async () => {
+                        const pdfData = await fetchJson(template.pdf_url);
+                        if (pdfData.status !== 'success' || !pdfData.pdf) {
+                            throw new Error(pdfData.message || 'Error fetching PDF file');
+                        }
+                        return base64ToBlob(pdfData.pdf, 'application/pdf');
+                    };
+
+                    let pdfBlob = await performActionWithResult(fetchPdfBlob, {
+                        retries: 4,
+                        delayMs: 700,
+                        backoffFactor: 1.5
+                    });
+                    if (!pdfBlob) {
+                        throw new Error('Could not load PDF after retries.');
+                    }
 
                     // Use PDFLib to fill in the PDF fields based on the template's field mappings
                     try {
@@ -331,9 +372,21 @@ async function initDokumenteDatenbank({ fetchJson, addCss, PDFLibRef = PDFLib })
                     const dataTransfer = new DataTransfer();
                     dataTransfer.items.add(file);
                     fileInput.files = dataTransfer.files;
-                    fileInput.dispatchEvent(new Event("change"));
-                    await wait(200);
+                    fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+
+                    await waitFor(() => fileInput.files && fileInput.files.length > 0);
+                    if (fileInput.files[0].size === 0) {
+                        throw new Error('Prepared file has size 0 bytes.');
+                    }
+                }, {
+                    retries: 3,
+                    delayMs: 1000,
+                    backoffFactor: 1.5
                 });
+
+                if (!uploadPrepared) {
+                    alert("PDF konnte nach mehreren Versuchen nicht vorbereitet werden. Bitte erneut versuchen.");
+                }
             }
 
             sequentialExecution().catch(console.error);
