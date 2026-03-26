@@ -30,15 +30,13 @@ function fetchJson(url, { method = 'GET', headers = {}, body = null, withCredent
 }
 
 function installWindowOpenHook() {
-  const script = document.createElement('script');
-  script.src = chrome.runtime.getURL('content/page-window-open-hook.js');
-  script.async = false;
-  (document.head || document.documentElement).appendChild(script);
-  script.onload = () => script.remove();
+  // The page-context hook is injected directly via manifest content_scripts (world: MAIN).
+  // Keep this as a no-op to satisfy the shared core interface.
 }
 
 function signalPageAutofillNextOpen() {
   window.postMessage({ source: 'tecis-extension', type: 'set-autofill-next-open' }, '*');
+  window.dispatchEvent(new CustomEvent('tecis-extension:set-autofill-next-open'));
 }
 
 function createDocumentJsonPromise() {
