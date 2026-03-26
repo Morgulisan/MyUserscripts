@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         tecis BM Gesprächsnotiz Autofill
 // @namespace    http://tampermonkey.net/
-// @version      2.1.0
+// @version      2.1.2
 // @description  Befüllt die Gesprächsnotiz wenn ?autofill=true gesetzt ist und fügt einen Autofill button in der BM hinzu
 // @author       Malte Kretzschmar
 // @match        https://bm.bp.vertrieb-plattform.de/bm/*
