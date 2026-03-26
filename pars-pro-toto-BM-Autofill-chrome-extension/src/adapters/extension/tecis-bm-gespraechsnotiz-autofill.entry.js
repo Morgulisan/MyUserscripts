@@ -39,6 +39,7 @@ function installWindowOpenHook() {
 
 function signalPageAutofillNextOpen() {
   window.postMessage({ source: 'tecis-extension', type: 'set-autofill-next-open' }, '*');
+  window.dispatchEvent(new CustomEvent('tecis-extension:set-autofill-next-open'));
 }
 
 function createDocumentJsonPromise() {
