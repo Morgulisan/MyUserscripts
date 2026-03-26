@@ -29,79 +29,12 @@ function fetchJson(url, { method = 'GET', headers = {}, body = null, withCredent
   });
 }
 
-function getPageWindowOpenHookSource() {
-  return `
-    (function() {
-      let addAutofillNextOpen = false;
-
-      function isNormalUrl(u) {
-        return typeof u === "string" && !/^(?:javascript:|data:|blob:)/i.test(u);
-      }
-
-      function getContextParams() {
-        const params = new URLSearchParams(location.search);
-        return {
-          wibiid: params.get("wibiid"),
-          svhvnr: params.get("svhvnr"),
-          verkaufsbegleiter: params.get("verkaufsbegleiter")
-        };
-      }
-
-      function appendParams(u, forceAutofill) {
-        if (!isNormalUrl(u)) return u;
-        let target;
-        try {
-          target = new URL(u, location.href);
-        } catch {
-          return u;
-        }
-
-        const context = getContextParams();
-        if (context.wibiid && !target.searchParams.has("wibiid")) {
-          target.searchParams.set("wibiid", context.wibiid);
-        }
-        if (context.svhvnr && !target.searchParams.has("svhvnr")) {
-          target.searchParams.set("svhvnr", context.svhvnr);
-        }
-        if (context.verkaufsbegleiter && !target.searchParams.has("verkaufsbegleiter")) {
-          target.searchParams.set("verkaufsbegleiter", context.verkaufsbegleiter);
-        }
-        if (forceAutofill) {
-          target.searchParams.set("autofill", "true");
-        }
-        return target.toString();
-      }
-
-      const originalOpen = window.open;
-      Object.defineProperty(window, "open", {
-        configurable: true,
-        writable: true,
-        value: function(url, name, specs, replace) {
-          if (typeof url === "string") {
-            url = appendParams(url, addAutofillNextOpen);
-          }
-          const ret = originalOpen.call(this, url, name, specs, replace);
-          addAutofillNextOpen = false;
-          return ret;
-        }
-      });
-
-      window.addEventListener('message', (event) => {
-        if (event.source !== window) return;
-        if (!event.data || event.data.source !== 'tecis-extension') return;
-        if (event.data.type === 'set-autofill-next-open') {
-          addAutofillNextOpen = true;
-        }
-      });
-    })();
-  `;
-}
-
 function installWindowOpenHook() {
   const script = document.createElement('script');
-  script.textContent = getPageWindowOpenHookSource();
+  script.src = chrome.runtime.getURL('content/page-window-open-hook.js');
+  script.async = false;
   (document.head || document.documentElement).appendChild(script);
-  script.remove();
+  script.onload = () => script.remove();
 }
 
 function signalPageAutofillNextOpen() {

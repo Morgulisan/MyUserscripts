@@ -12,14 +12,9 @@ function initGespraechsnotizAutofillList({ installWindowOpenHook, signalPageAuto
     // -------- URL param helpers --------
     let addAutofillNextOpen = false; // one-shot flag for the next window.open()
 
-    // Hilfsfunktion zum Abgreifen aller relevanten Parameter aus der aktuellen URL
-    function getContextParams() {
-        const params = new URLSearchParams(location.search);
-        return {
-            wibiid: params.get("wibiid"),
-            svhvnr: params.get("svhvnr"),
-            verkaufsbegleiter: params.get("verkaufsbegleiter")
-        };
+    function getCurrentWibiid() {
+        try { return new URL(location.href).searchParams.get("wibiid"); }
+        catch { return null; }
     }
 
     function isNormalUrl(u) {
@@ -32,16 +27,9 @@ function initGespraechsnotizAutofillList({ installWindowOpenHook, signalPageAuto
         try { target = new URL(u, location.href); }
         catch { return u; }
 
-        const context = getContextParams();
-
-        if (context.wibiid && !target.searchParams.has("wibiid")) {
-            target.searchParams.set("wibiid", context.wibiid);
-        }
-        if (context.svhvnr && !target.searchParams.has("svhvnr")) {
-            target.searchParams.set("svhvnr", context.svhvnr);
-        }
-        if (context.verkaufsbegleiter && !target.searchParams.has("verkaufsbegleiter")) {
-            target.searchParams.set("verkaufsbegleiter", context.verkaufsbegleiter);
+        const wibiid = getCurrentWibiid();
+        if (wibiid && !target.searchParams.has("wibiid")) {
+            target.searchParams.set("wibiid", wibiid);
         }
         if (forceAutofill) {
             target.searchParams.set("autofill", "true");
@@ -151,7 +139,7 @@ function initGespraechsnotizAutofillList({ installWindowOpenHook, signalPageAuto
     }
 }
 
-// ===== BP Editor Autofill (mit Berater-Kontext) =====
+// ===== BP Editor Autofill (wibiid) =====
 function initGespraechsnotizAutofillEditor({ fetchJson, createDocumentJsonPromise }) {
     // Only run this block on the editor UI
     if (!location.href.startsWith("https://bm.bp.vertrieb-plattform.de/edocbox/editor/ui/")) return;
@@ -165,26 +153,6 @@ function initGespraechsnotizAutofillEditor({ fetchJson, createDocumentJsonPromis
     const qs = new URLSearchParams(window.location.search);
     const isAutoFill = (qs.get('autofill') || '').toLowerCase() === 'true';
     if(!isAutoFill) return;
-
-    // --- Dekodierung der Kontext-Parameter ---
-    function decodeBase64Url(b64) {
-        if (!b64) return '';
-        b64 = b64.replace(/-/g, '+').replace(/_/g, '/');
-        while (b64.length % 4) b64 += '=';
-        try {
-            return decodeURIComponent(Array.prototype.map.call(atob(b64), c =>
-                '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
-            ).join(''));
-        } catch {
-            try { return atob(b64); } catch { return ''; }
-        }
-    }
-
-    const context = {
-        wibiid: decodeBase64Url(qs.get('wibiid') || '').trim(),
-        svhvnr: decodeBase64Url(qs.get('svhvnr') || '').trim(),
-        vkb: decodeBase64Url(qs.get('verkaufsbegleiter') || '').trim()
-    };
 
     // ------- Overlay Helper -------
     function updateOverlay(message = "Gesprächsnotiz wird vorausgefüllt") {
@@ -225,6 +193,19 @@ function initGespraechsnotizAutofillEditor({ fetchJson, createDocumentJsonPromis
     }
 
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+    function decodeBase64Url(b64) {
+        if (!b64) return '';
+        b64 = b64.replace(/-/g, '+').replace(/_/g, '/');
+        while (b64.length % 4) b64 += '=';
+        try {
+            return decodeURIComponent(Array.prototype.map.call(atob(b64), c =>
+                '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
+            ).join(''));
+        } catch (e) {
+            try { return atob(b64); } catch { return ''; }
+        }
+    }
 
     function gmFetchJson(url, { method = 'GET', headers = {}, body = null, withCredentials = true } = {}) {
         return fetchJson(url, { method, headers, body, withCredentials })
@@ -921,7 +902,7 @@ function initGespraechsnotizAutofillEditor({ fetchJson, createDocumentJsonPromis
         updateOverlay("Starte Autofill...");
 
         let pageData;
-        const wibiid = context.wibiid;
+        const wibiid = decodeBase64Url(qs.get('wibiid') || '').trim();
 
         // Schritt 1: Lade die grundlegenden Dokument-Daten. Dies ist immer notwendig.
         try {
@@ -1026,79 +1007,12 @@ function fetchJson(url, { method = 'GET', headers = {}, body = null, withCredent
   });
 }
 
-function getPageWindowOpenHookSource() {
-  return `
-    (function() {
-      let addAutofillNextOpen = false;
-
-      function isNormalUrl(u) {
-        return typeof u === "string" && !/^(?:javascript:|data:|blob:)/i.test(u);
-      }
-
-      function getContextParams() {
-        const params = new URLSearchParams(location.search);
-        return {
-          wibiid: params.get("wibiid"),
-          svhvnr: params.get("svhvnr"),
-          verkaufsbegleiter: params.get("verkaufsbegleiter")
-        };
-      }
-
-      function appendParams(u, forceAutofill) {
-        if (!isNormalUrl(u)) return u;
-        let target;
-        try {
-          target = new URL(u, location.href);
-        } catch {
-          return u;
-        }
-
-        const context = getContextParams();
-        if (context.wibiid && !target.searchParams.has("wibiid")) {
-          target.searchParams.set("wibiid", context.wibiid);
-        }
-        if (context.svhvnr && !target.searchParams.has("svhvnr")) {
-          target.searchParams.set("svhvnr", context.svhvnr);
-        }
-        if (context.verkaufsbegleiter && !target.searchParams.has("verkaufsbegleiter")) {
-          target.searchParams.set("verkaufsbegleiter", context.verkaufsbegleiter);
-        }
-        if (forceAutofill) {
-          target.searchParams.set("autofill", "true");
-        }
-        return target.toString();
-      }
-
-      const originalOpen = window.open;
-      Object.defineProperty(window, "open", {
-        configurable: true,
-        writable: true,
-        value: function(url, name, specs, replace) {
-          if (typeof url === "string") {
-            url = appendParams(url, addAutofillNextOpen);
-          }
-          const ret = originalOpen.call(this, url, name, specs, replace);
-          addAutofillNextOpen = false;
-          return ret;
-        }
-      });
-
-      window.addEventListener('message', (event) => {
-        if (event.source !== window) return;
-        if (!event.data || event.data.source !== 'tecis-extension') return;
-        if (event.data.type === 'set-autofill-next-open') {
-          addAutofillNextOpen = true;
-        }
-      });
-    })();
-  `;
-}
-
 function installWindowOpenHook() {
   const script = document.createElement('script');
-  script.textContent = getPageWindowOpenHookSource();
+  script.src = chrome.runtime.getURL('content/page-window-open-hook.js');
+  script.async = false;
   (document.head || document.documentElement).appendChild(script);
-  script.remove();
+  script.onload = () => script.remove();
 }
 
 function signalPageAutofillNextOpen() {
