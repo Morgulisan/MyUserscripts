@@ -221,7 +221,15 @@ export function initGespraechsnotizAutofillEditor({ fetchJson, createDocumentJso
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
     function gmFetchJson(url, { method = 'GET', headers = {}, body = null, withCredentials = true } = {}) {
-        return fetchJson(url, { method, headers, body, withCredentials })
+        const requestHeaders = { ...headers };
+        const hasAbweichenderBetreuer = !!context.vkb && !!context.svhvnr && context.vkb !== context.svhvnr;
+        const isHaushaltApiRequest = /^https:\/\/startkonzept\.bp\.vertrieb-plattform\.de\/api\/haushalt(?:\/|\?|$)/.test(url);
+
+        if (hasAbweichenderBetreuer && isHaushaltApiRequest) {
+            requestHeaders['x-betreuer-hv-nr'] = context.svhvnr;
+        }
+
+        return fetchJson(url, { method, headers: requestHeaders, body, withCredentials })
             .catch((err) => {
                 if (err.status === 500 && err.data && err.data.errorType === "HAUSHALT_NOT_ACTIVE") {
                     const customErr = new Error("HAUSHALT_NOT_ACTIVE");
