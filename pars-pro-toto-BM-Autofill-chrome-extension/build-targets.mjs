@@ -20,6 +20,31 @@ function read(path) {
   return readFileSync(path, 'utf8');
 }
 
+function bumpPatchVersion(version) {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
+  if (!match) throw new Error(`Unsupported version format: ${version}`);
+  const [, major, minor, patch] = match;
+  return `${major}.${minor}.${Number(patch) + 1}`;
+}
+
+function bumpManifestVersion() {
+  const manifestPath = resolve(ROOT, 'manifest.json');
+  const manifest = JSON.parse(read(manifestPath));
+  const nextVersion = bumpPatchVersion(manifest.version);
+  manifest.version = nextVersion;
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  return nextVersion;
+}
+
+function setUserscriptVersion(adapterPath, version) {
+  const source = read(adapterPath);
+  const nextSource = source.replace(/(@version\s+)(\d+\.\d+\.\d+)/, `$1${version}`);
+  if (nextSource === source) {
+    throw new Error(`Could not find userscript @version header in ${adapterPath}`);
+  }
+  writeFileSync(adapterPath, nextSource, 'utf8');
+}
+
 function extractUserscriptHeader(source) {
   const match = source.match(/\/\/ ==UserScript==[\s\S]*?\/\/ ==\/UserScript==\r?\n?/);
   return match ? match[0].trimEnd() + '\n\n' : '';
@@ -54,9 +79,15 @@ function writeOutputs(outputPaths, source) {
 
 const bmCore = resolve(ROOT, 'src/core/tecis-bm-gespraechsnotiz-autofill.core.js');
 const dokumenteCore = resolve(ROOT, 'src/core/tecis-dokumente-datenbank.core.js');
+const bmUserscriptAdapter = resolve(ROOT, 'src/adapters/userscript/tecis-bm-gespraechsnotiz-autofill.entry.js');
+const dokuUserscriptAdapter = resolve(ROOT, 'src/adapters/userscript/tecis-dokumente-datenbank.entry.js');
+const nextVersion = bumpManifestVersion();
+
+setUserscriptVersion(bmUserscriptAdapter, nextVersion);
+setUserscriptVersion(dokuUserscriptAdapter, nextVersion);
 
 const bmUserscript = buildBundleSource({
-  adapterPath: resolve(ROOT, 'src/adapters/userscript/tecis-bm-gespraechsnotiz-autofill.entry.js'),
+  adapterPath: bmUserscriptAdapter,
   corePaths: [bmCore],
   includeHeader: true,
 });
@@ -69,7 +100,7 @@ writeOutputs(
 );
 
 const dokuUserscript = buildBundleSource({
-  adapterPath: resolve(ROOT, 'src/adapters/userscript/tecis-dokumente-datenbank.entry.js'),
+  adapterPath: dokuUserscriptAdapter,
   corePaths: [dokumenteCore],
   includeHeader: true,
 });
@@ -105,4 +136,4 @@ writeOutputs(
   dokuExtension,
 );
 
-console.log('Built shared targets. Updated dist/ + legacy userscript + extension content outputs.');
+console.log(`Built shared targets for version ${nextVersion}. Updated dist/ + legacy userscript + extension content outputs.`);

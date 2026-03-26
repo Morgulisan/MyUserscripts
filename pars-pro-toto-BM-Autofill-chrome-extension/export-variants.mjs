@@ -29,6 +29,22 @@ const VARIANTS = [
 const EXCLUDE_NAMES = new Set(['dist', 'node_modules', '__pycache__', CURRENT_SCRIPT_NAME]);
 const EXCLUDE_SUFFIXES = new Set(['.pyc']);
 
+function bumpPatchVersion(version) {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
+  if (!match) throw new Error(`Unsupported version format: ${version}`);
+  const [, major, minor, patch] = match;
+  return `${major}.${minor}.${Number(patch) + 1}`;
+}
+
+function bumpManifestVersion() {
+  const manifestPath = join(ROOT, 'manifest.json');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const nextVersion = bumpPatchVersion(manifest.version);
+  manifest.version = nextVersion;
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  return nextVersion;
+}
+
 function loadManifest() {
   return JSON.parse(readFileSync(join(ROOT, 'manifest.json'), 'utf8'));
 }
@@ -122,6 +138,8 @@ function buildVariant(baseManifest, variant) {
 }
 
 function main() {
+  const nextVersion = bumpManifestVersion();
+
   if (existsSync(DIST_DIR)) {
     rmSync(DIST_DIR, { recursive: true, force: true });
   }
@@ -130,7 +148,7 @@ function main() {
   const manifest = loadManifest();
   const outputs = VARIANTS.map((variant) => ({ variant, ...buildVariant(manifest, variant) }));
 
-  console.log('Export abgeschlossen:');
+  console.log(`Export abgeschlossen (Version ${nextVersion}):`);
   for (const { variant, variantDir, zipPath } of outputs) {
     const affiliateState = variant.includeAffiliate ? 'mit Affiliate' : 'ohne Affiliate';
     console.log(`- ${variant.key} (${affiliateState})`);
