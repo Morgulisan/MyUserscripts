@@ -6,9 +6,14 @@ export function initGespraechsnotizAutofillList({ installWindowOpenHook, signalP
     // -------- URL param helpers --------
     let addAutofillNextOpen = false; // one-shot flag for the next window.open()
 
-    function getCurrentWibiid() {
-        try { return new URL(location.href).searchParams.get("wibiid"); }
-        catch { return null; }
+    // Hilfsfunktion zum Abgreifen aller relevanten Parameter aus der aktuellen URL
+    function getContextParams() {
+        const params = new URLSearchParams(location.search);
+        return {
+            wibiid: params.get("wibiid"),
+            svhvnr: params.get("svhvnr"),
+            verkaufsbegleiter: params.get("verkaufsbegleiter")
+        };
     }
 
     function isNormalUrl(u) {
@@ -21,9 +26,16 @@ export function initGespraechsnotizAutofillList({ installWindowOpenHook, signalP
         try { target = new URL(u, location.href); }
         catch { return u; }
 
-        const wibiid = getCurrentWibiid();
-        if (wibiid && !target.searchParams.has("wibiid")) {
-            target.searchParams.set("wibiid", wibiid);
+        const context = getContextParams();
+
+        if (context.wibiid && !target.searchParams.has("wibiid")) {
+            target.searchParams.set("wibiid", context.wibiid);
+        }
+        if (context.svhvnr && !target.searchParams.has("svhvnr")) {
+            target.searchParams.set("svhvnr", context.svhvnr);
+        }
+        if (context.verkaufsbegleiter && !target.searchParams.has("verkaufsbegleiter")) {
+            target.searchParams.set("verkaufsbegleiter", context.verkaufsbegleiter);
         }
         if (forceAutofill) {
             target.searchParams.set("autofill", "true");
@@ -133,7 +145,7 @@ export function initGespraechsnotizAutofillList({ installWindowOpenHook, signalP
     }
 }
 
-// ===== BP Editor Autofill (wibiid) =====
+// ===== BP Editor Autofill (mit Berater-Kontext) =====
 export function initGespraechsnotizAutofillEditor({ fetchJson, createDocumentJsonPromise }) {
     // Only run this block on the editor UI
     if (!location.href.startsWith("https://bm.bp.vertrieb-plattform.de/edocbox/editor/ui/")) return;
@@ -147,6 +159,26 @@ export function initGespraechsnotizAutofillEditor({ fetchJson, createDocumentJso
     const qs = new URLSearchParams(window.location.search);
     const isAutoFill = (qs.get('autofill') || '').toLowerCase() === 'true';
     if(!isAutoFill) return;
+
+    // --- Dekodierung der Kontext-Parameter ---
+    function decodeBase64Url(b64) {
+        if (!b64) return '';
+        b64 = b64.replace(/-/g, '+').replace(/_/g, '/');
+        while (b64.length % 4) b64 += '=';
+        try {
+            return decodeURIComponent(Array.prototype.map.call(atob(b64), c =>
+                '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
+            ).join(''));
+        } catch {
+            try { return atob(b64); } catch { return ''; }
+        }
+    }
+
+    const context = {
+        wibiid: decodeBase64Url(qs.get('wibiid') || '').trim(),
+        svhvnr: decodeBase64Url(qs.get('svhvnr') || '').trim(),
+        vkb: decodeBase64Url(qs.get('verkaufsbegleiter') || '').trim()
+    };
 
     // ------- Overlay Helper -------
     function updateOverlay(message = "Gesprächsnotiz wird vorausgefüllt") {
@@ -187,19 +219,6 @@ export function initGespraechsnotizAutofillEditor({ fetchJson, createDocumentJso
     }
 
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
-    function decodeBase64Url(b64) {
-        if (!b64) return '';
-        b64 = b64.replace(/-/g, '+').replace(/_/g, '/');
-        while (b64.length % 4) b64 += '=';
-        try {
-            return decodeURIComponent(Array.prototype.map.call(atob(b64), c =>
-                '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
-            ).join(''));
-        } catch (e) {
-            try { return atob(b64); } catch { return ''; }
-        }
-    }
 
     function gmFetchJson(url, { method = 'GET', headers = {}, body = null, withCredentials = true } = {}) {
         return fetchJson(url, { method, headers, body, withCredentials })
@@ -896,7 +915,7 @@ export function initGespraechsnotizAutofillEditor({ fetchJson, createDocumentJso
         updateOverlay("Starte Autofill...");
 
         let pageData;
-        const wibiid = decodeBase64Url(qs.get('wibiid') || '').trim();
+        const wibiid = context.wibiid;
 
         // Schritt 1: Lade die grundlegenden Dokument-Daten. Dies ist immer notwendig.
         try {
