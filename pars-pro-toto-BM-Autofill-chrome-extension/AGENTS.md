@@ -27,6 +27,21 @@
 - **PDF-Lib**: Lokal über `lib/pdf-lib.js` eingebunden, keine externe CDN-Abhängigkeit.
 - **Autofill XHR-Intercept**: Im Editor via DOM-Injection, weil Content-Scripts die Page-Context-XHR nicht patchen können.
 
+
+## Generierte Dateien (nicht manuell bearbeiten)
+- Änderungen **nur** in `src/` vornehmen (`src/core/` und `src/adapters/`).
+- Die folgenden Build-/Output-Dateien dürfen nicht direkt editiert werden:
+  - `content/tecis-bm-gespraechsnotiz-autofill.js`
+  - `content/tecis-dokumente-datenbank.js`
+  - `../tecis BM Gespraechsnotiz Autofill.user.js`
+  - `../tecis Dokumente Datenbank.user.js`
+  - `../dist/extension/content/tecis-bm-gespraechsnotiz-autofill.js`
+  - `../dist/extension/content/tecis-dokumente-datenbank.js`
+  - `../dist/userscripts/tecis-bm-gespraechsnotiz-autofill.user.js`
+  - `../dist/userscripts/tecis-dokumente-datenbank.user.js`
+- Nach Änderungen in `src/` müssen die Output-Dateien über den Build-Prozess (`build-targets.mjs`) neu erzeugt werden.
+- Diese Liste ist zu pflegen: Wenn neue generierte Dateien hinzukommen oder Pfade sich ändern, diese Anweisung sofort aktualisieren.
+
 ## Tests & Debugging
 - In Chrome unter `chrome://extensions` im Entwicklermodus laden ("Entpackte Erweiterung" → Ordner `tecis-chrome-extension`).
 - Service Worker Logs in der Extensions-Seite öffnen.
