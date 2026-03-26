@@ -32,6 +32,12 @@
   "content_scripts": [
     {
       "matches": ["https://bm.bp.vertrieb-plattform.de/bm/*"],
+      "js": ["content/page-window-open-hook.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://bm.bp.vertrieb-plattform.de/bm/*"],
       "js": ["content/tecis-bm-gespraechsnotiz-autofill.js"],
       "run_at": "document_start"
     },
@@ -51,10 +57,5 @@
       "run_at": "document_idle"
     }
   ],
-  "web_accessible_resources": [
-    {
-      "resources": ["content/page-window-open-hook.js"],
-      "matches": ["https://bm.bp.vertrieb-plattform.de/*"]
-    }
-  ]
+  "web_accessible_resources": []
 }
