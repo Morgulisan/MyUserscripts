@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         tecis CRM Cross Selling Indicatoren
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @description  Fügt farbige Bubbles basierend auf den Verträgen des Kunden in die Kopfleiste ein.
 // @author       Malte Kretzschmar
 // @match        https://www.crm.vertrieb-plattform.de/*
@@ -91,11 +91,11 @@
 
         // Zählen der entsprechenden Produktkürzel
         const counts = {
-            AV: eigen.filter(v => ['FRV', 'bAV'].includes(v.produktKuerzel)).length,
-            IAA: eigen.filter(v => ['SBU', 'DD', 'IAA', 'RLV'].includes(v.produktKuerzel)).length,
+            AV: eigen.filter(v => ['FRV', 'bAV', 'KRV'].includes(v.produktKuerzel)).length,
+            IAA: eigen.filter(v => ['SBU', 'DD', 'IAA', 'RLV', 'PV'].includes(v.produktKuerzel)).length,
             KV: eigen.filter(v => ['GKV', 'PKV'].includes(v.produktKuerzel)).length,
             INV: eigen.filter(v => ['INV'].includes(v.produktKuerzel)).length,
-            SACH: eigen.filter(v => ['PHV', 'RSV', 'KFZ', 'HRV'].includes(v.produktKuerzel)).length
+            SACH: eigen.filter(v => ['PHV', 'RSV', 'KFZ', 'HRV', 'WGB'].includes(v.produktKuerzel)).length
         };
 
         return [
