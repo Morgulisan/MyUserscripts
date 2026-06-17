@@ -1,0 +1,59 @@
+Private Sub Worksheet_Change(ByVal Target As Range)
+    ' Declare variables for handling the worksheets and ranges
+    Dim ws As Worksheet
+    Dim origin As Worksheet
+    Dim editRange As Range
+    Dim activeName As String
+    Dim lastRow As Long
+    Dim lastCol As Long
+    Dim index As Long
+    Dim i As Long
+    Dim data As Variant
+
+    ' Set variables to represent the active sheet and the range that triggered the event
+    Set origin = ActiveSheet
+    Set editRange = Target
+    activeName = ActiveSheet.Name
+
+    ' Check if the changed cell is not in the first row, is in the first column, and its new value is not the same as its sheet name
+    If editRange.Row <> 1 And editRange.Column = 1 And activeName <> Target.Cells(1,1).Value Then
+        ' Use error handling to attempt to set the worksheet variable to a sheet named after the cell's new value
+        On Error Resume Next
+        Set ws = ThisWorkbook.Sheets(Target.Value)
+        On Error GoTo 0
+
+        ' Proceed if a valid worksheet was set (i.e., if the sheet exists)
+        If Not ws Is Nothing Then
+            ' Calculate the last row in the first column of the target sheet that is not empty, then increment by one
+            lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row + 1
+            ' Find the last used column in the first row of the target sheet
+            lastCol = LastNonEmptyRow(ws);
+
+            ' Copy data from the origin worksheet to the target worksheet based on headers matching
+            For i = 1 To origin.Cells(1, origin.Columns.Count).End(xlToLeft).Column
+                ' Find the matching header in the target worksheet
+                index = FindInRow(ws, origin.Cells(1, i).Value)
+                ' If a matching header is found, copy the corresponding cell's value from the origin to the target sheet
+                If index <> -1 Then
+                    ws.Cells(lastRow, index).Value = origin.Cells(editRange.Row, i).Value
+                End If
+            Next i
+
+            ' After copying, delete the row from the origin sheet
+            origin.Rows(editRange.Row).Delete
+        End If
+    End If
+End Sub
+
+
+
+
+Function LastNonEmptyRow(ws As Worksheet) As Long
+    Dim lastRow As Long, col As Long
+    For col = 1 To 10 ' Check the first 10 columns
+        lastRow = Application.Max(lastRow, ws.Cells(ws.Rows.Count, col).End(xlUp).Row)
+    Next col
+
+    LastNonEmptyRow = lastRow
+End Function
+
