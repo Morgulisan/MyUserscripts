@@ -1,4 +1,4 @@
-import { initGespraechsnotizAutofillEditor, initGespraechsnotizAutofillList } from '../../core/tecis-bm-gespraechsnotiz-autofill.core.js';
+import { initGespraechsnotizAutofillEditor, initGespraechsnotizAutofillList, initGespraechsnotizAutofillFrontend } from '../../core/tecis-bm-gespraechsnotiz-autofill.core.js';
 
 function fetchJson(url, { method = 'GET', headers = {}, body = null, withCredentials = true } = {}) {
   return new Promise((resolve, reject) => {
@@ -37,6 +37,12 @@ function installWindowOpenHook() {
 function signalPageAutofillNextOpen() {
   window.postMessage({ source: 'tecis-extension', type: 'set-autofill-next-open' }, '*');
   window.dispatchEvent(new CustomEvent('tecis-extension:set-autofill-next-open'));
+}
+
+function signalWibiid(wibiidB64) {
+  // wibiid wird im neuen Frontend aus der mandantennr aufgelöst und an den MAIN-world
+  // window.open-Hook (page-window-open-hook.js) übergeben.
+  window.postMessage({ source: 'tecis-extension', type: 'set-wibiid', wibiid: wibiidB64 }, '*');
 }
 
 function createDocumentJsonPromise() {
@@ -84,3 +90,4 @@ function createDocumentJsonPromise() {
 
 initGespraechsnotizAutofillList({ installWindowOpenHook, signalPageAutofillNextOpen });
 initGespraechsnotizAutofillEditor({ fetchJson, createDocumentJsonPromise });
+initGespraechsnotizAutofillFrontend({ fetchJson, signalWibiid, signalPageAutofillNextOpen });

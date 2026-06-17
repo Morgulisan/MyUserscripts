@@ -23,6 +23,936 @@ export async function initDokumenteDatenbank({ fetchJson, addCss, PDFLibRef = PD
     };
     // --- ⬆️ END OF EDITABLE SECTION ⬆️ ---
 
+    const pdfTemplatesUrl = 'https://mopoliti.de/tecis/Store/get_pdf_templates.php';
+
+    function base64ToBlob(base64, contentType = 'application/pdf') {
+        const byteCharacters = atob(base64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        return new Blob([new Uint8Array(byteNumbers)], { type: contentType });
+    }
+
+    async function fetchPdfTemplates() {
+        const data = await fetchJson(pdfTemplatesUrl);
+        if (data.status === 'success' && Array.isArray(data.templates)) {
+            return data.templates;
+        }
+        throw new Error(data.message || 'Error retrieving PDF templates');
+    }
+
+    async function fetchTemplatePdfBlob(template, personalData = {}) {
+        const pdfData = await fetchJson(template.pdf_url);
+        if (pdfData.status !== 'success' || !pdfData.pdf) {
+            throw new Error(pdfData.message || 'Error fetching PDF file');
+        }
+
+        let pdfBlob = base64ToBlob(pdfData.pdf, 'application/pdf');
+        try {
+            const existingPdfBytes = await pdfBlob.arrayBuffer();
+            const pdfDoc = await PDFDocument.load(existingPdfBytes);
+            const form = pdfDoc.getForm();
+            const mappings = template.field_mappings || {};
+
+            for (const [pdfFieldName, dataKey] of Object.entries(mappings)) {
+                try {
+                    let finalValue;
+                    if (dataKey === '$HEUTE') {
+                        const today = new Date();
+                        const dd = String(today.getDate()).padStart(2, '0');
+                        const mm = String(today.getMonth() + 1).padStart(2, '0');
+                        const yyyy = today.getFullYear();
+                        finalValue = `${dd}.${mm}.${yyyy}`;
+                    } else if (concatenationMap.hasOwnProperty(dataKey)) {
+                        const ruleParts = concatenationMap[dataKey];
+                        const resolvedParts = ruleParts.map(part => {
+                            if (typeof part === 'string' && part.startsWith('$')) {
+                                return resolveJsonPath(personalData, part) || '';
+                            }
+                            return part;
+                        });
+                        finalValue = resolvedParts.join('');
+                    } else {
+                        finalValue = resolveJsonPath(personalData, dataKey) || "";
+                    }
+
+                    form.getTextField(pdfFieldName).setText(String(finalValue));
+                } catch (e) {
+                    console.warn(`Field "${pdfFieldName}" with rule "${dataKey}" could not be set.`, e);
+                }
+            }
+
+            const newPdfBytes = await pdfDoc.save();
+            pdfBlob = new Blob([newPdfBytes], { type: 'application/pdf' });
+        } catch (err) {
+            console.warn("PDFLib processing failed. Using original PDF.", err);
+        }
+        return pdfBlob;
+    }
+
+    function downloadBlob(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function getMandantenNrFromUrlOrStorage() {
+        const params = new URLSearchParams(location.search);
+        const current = params.get('mandantennr');
+        if (current) {
+            sessionStorage.setItem('tecis-store-mandantennr', current);
+            return current;
+        }
+        return sessionStorage.getItem('tecis-store-mandantennr');
+    }
+
+    function decodeMandantenNr(mandantennr) {
+        if (!mandantennr) return null;
+        try {
+            const decoded = atob(mandantennr);
+            return /^\d+$/.test(decoded) ? decoded : null;
+        } catch (err) {
+            console.warn('Could not decode mandantennr.', err);
+            return null;
+        }
+    }
+
+    function pickPersonalDataCandidate(data) {
+        if (!data || typeof data !== 'object') return {};
+        const directCandidates = [
+            data.personalien,
+            data.person,
+            data.kunde,
+            data.kundenDaten,
+            data.mandant,
+            data.versicherungsNehmer,
+            data.haushalt?.personalien,
+            data.haushalt?.person,
+            data.haushalt?.kunde
+        ];
+        for (const candidate of directCandidates) {
+            if (candidate && typeof candidate === 'object') return candidate;
+        }
+        const arrayCandidates = [
+            data.resultData,
+            data.personen,
+            data.kunden,
+            data.mandanten,
+            data.haushalt?.personen,
+            data.haushalt?.kunden,
+            data.haushalt?.mandanten
+        ];
+        for (const candidate of arrayCandidates) {
+            if (Array.isArray(candidate) && candidate.length && typeof candidate[0] === 'object') {
+                return candidate[0];
+            }
+        }
+        return data;
+    }
+
+    async function fetchFrontendPersonalData(mandantennr) {
+        if (!mandantennr) return {};
+        try {
+            const url = 'https://bm.bp.vertrieb-plattform.de/api/service/haushalt?mandantenNr=' + encodeURIComponent(mandantennr);
+            const data = await fetchJson(url);
+            const candidate = pickPersonalDataCandidate(data);
+            console.log('PDF Store BM 2.0: Haushalt/Personendaten geladen.', candidate);
+            return candidate || {};
+        } catch (err) {
+            console.warn('PDF Store BM 2.0: Personendaten konnten nicht geladen werden.', err);
+            return {};
+        }
+    }
+
+    function findButtonByLabel(labelText) {
+        return Array.from(document.querySelectorAll('button')).find(button => {
+            const label = button.querySelector('[data-slot="label"]') || button;
+            return label.textContent.trim() === labelText;
+        });
+    }
+
+    function normalizeLabel(value) {
+        return String(value || '').replace(/\s+/g, ' ').trim();
+    }
+
+    function wait(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function waitForElement(selector, { timeoutMs = 10000, visible = false } = {}) {
+        return new Promise((resolve, reject) => {
+            const start = Date.now();
+            const timer = setInterval(() => {
+                const el = document.querySelector(selector);
+                const isVisible = !visible || (el && el.getClientRects().length > 0);
+                if (el && isVisible) {
+                    clearInterval(timer);
+                    resolve(el);
+                    return;
+                }
+                if (Date.now() - start > timeoutMs) {
+                    clearInterval(timer);
+                    reject(new Error(`Timeout waiting for ${selector}`));
+                }
+            }, 100);
+        });
+    }
+
+    function waitForPredicate(predicate, { timeoutMs = 10000, intervalMs = 100, label = 'condition' } = {}) {
+        return new Promise((resolve, reject) => {
+            const start = Date.now();
+            const timer = setInterval(() => {
+                try {
+                    const result = predicate();
+                    if (result) {
+                        clearInterval(timer);
+                        resolve(result);
+                        return;
+                    }
+                } catch (err) {
+                    // Keep polling; transient DOM states are expected in the Nuxt wizard.
+                }
+                if (Date.now() - start > timeoutMs) {
+                    clearInterval(timer);
+                    reject(new Error(`Timeout waiting for ${label}`));
+                }
+            }, intervalMs);
+        });
+    }
+
+    function setNativeValue(input, value) {
+        const proto = Object.getPrototypeOf(input);
+        const desc = Object.getOwnPropertyDescriptor(proto, 'value') ||
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+        if (desc && desc.set) {
+            desc.set.call(input, value);
+        } else {
+            input.value = value;
+        }
+        input._value = value;
+        input.setAttribute('value', value);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    function getNextFirstOfMonthMoreThanTenDaysOut(baseDate = new Date()) {
+        const threshold = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate() + 10);
+        let candidate = new Date(baseDate.getFullYear(), baseDate.getMonth(), 1);
+        if (candidate <= threshold) {
+            candidate = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 1);
+        }
+        while (candidate <= threshold) {
+            candidate = new Date(candidate.getFullYear(), candidate.getMonth() + 1, 1);
+        }
+        const yyyy = String(candidate.getFullYear());
+        const month = candidate.getMonth() + 1;
+        const day = candidate.getDate();
+        const mm = String(month).padStart(2, '0');
+        const dd = String(day).padStart(2, '0');
+        return {
+            date: candidate,
+            yyyy,
+            mm,
+            dd,
+            visibleMonth: String(month),
+            visibleDay: String(day),
+            iso: `${yyyy}-${mm}-${dd}`,
+            display: `${day}.${month}.${yyyy}`
+        };
+    }
+
+    function dispatchEditableInput(target, value, inputType = 'insertText') {
+        target.dispatchEvent(new InputEvent('beforeinput', {
+            bubbles: true,
+            cancelable: true,
+            inputType,
+            data: value
+        }));
+        if (inputType === 'deleteContentBackward') {
+            target.textContent = '';
+        } else if (document.execCommand) {
+            document.execCommand('insertText', false, value);
+        } else {
+            target.textContent = (target.textContent || '') + value;
+        }
+        target.dispatchEvent(new InputEvent('input', {
+            bubbles: true,
+            inputType,
+            data: value
+        }));
+    }
+
+    async function typeIntoContentEditableSegment(segment, value) {
+        if (!segment) return;
+        segment.focus();
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(segment);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        segment.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Backspace', code: 'Backspace' }));
+        dispatchEditableInput(segment, '', 'deleteContentBackward');
+        segment.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'Backspace', code: 'Backspace' }));
+        for (const char of String(value)) {
+            const digitCode = /^\d$/.test(char) ? 'Digit' + char : '';
+            segment.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: char, code: digitCode }));
+            dispatchEditableInput(segment, char, 'insertText');
+            segment.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: char, code: digitCode }));
+            await wait(15);
+        }
+        if (segment.textContent !== value) {
+            segment.textContent = value;
+            segment.dispatchEvent(new InputEvent('input', {
+                bubbles: true,
+                inputType: 'insertReplacementText',
+                data: value
+            }));
+        }
+        segment.removeAttribute('data-placeholder');
+        segment.setAttribute('aria-valuenow', value);
+        segment.setAttribute('aria-valuetext', value);
+        segment.dispatchEvent(new Event('change', { bubbles: true }));
+        segment.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Tab', code: 'Tab' }));
+        segment.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'Tab', code: 'Tab' }));
+        segment.blur();
+        segment.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    }
+
+    function isVisibleElement(el) {
+        return !!(el && el.getClientRects().length > 0);
+    }
+
+    function findBeginnDateTrigger(dateGroup) {
+        const scope = dateGroup?.closest('.flex, [data-slot="field"], [data-slot="item"], label')?.parentElement ||
+            dateGroup?.parentElement ||
+            document;
+        return scope.querySelector('[aria-haspopup="dialog"][aria-controls], [class*="i-custom:calendar"]') ||
+            document.querySelector('[aria-haspopup="dialog"][aria-controls][id*="popover-trigger"], [class*="i-custom:calendar"]');
+    }
+
+    function getOpenDatePopover(trigger) {
+        const controls = trigger?.getAttribute('aria-controls');
+        if (controls) {
+            const controlled = document.getElementById(controls);
+            if (isVisibleElement(controlled)) return controlled;
+        }
+        return Array.from(document.querySelectorAll('[id^="reka-popover-content"], [data-radix-popper-content-wrapper], [role="dialog"][data-state="open"]'))
+            .find(el => isVisibleElement(el) && normalizeLabel(el.textContent));
+    }
+
+    function isDisabledChoice(el) {
+        return !!(el.disabled ||
+            el.getAttribute('aria-disabled') === 'true' ||
+            el.hasAttribute('disabled') ||
+            el.hasAttribute('data-disabled') ||
+            el.closest('[aria-disabled="true"], [disabled], [data-disabled]'));
+    }
+
+    function findCalendarDayButton(root, dateParts) {
+        if (!root) return null;
+        const day = String(dateParts.date.getDate());
+        const candidates = Array.from(root.querySelectorAll('button, [role="button"], [role="gridcell"], [data-slot*="cell"], [data-reka-calendar-cell-trigger]'))
+            .filter(el => isVisibleElement(el) && !isDisabledChoice(el));
+        return candidates.find(el => {
+            const valueAttrs = [
+                el.getAttribute('data-value'),
+                el.getAttribute('data-date'),
+                el.getAttribute('aria-label'),
+                el.getAttribute('title')
+            ].filter(Boolean).join(' ');
+            if (valueAttrs.includes(dateParts.iso) || valueAttrs.includes(dateParts.display)) return true;
+            const text = normalizeLabel(el.textContent);
+            return text === day;
+        });
+    }
+
+    function findCalendarNextButton(root) {
+        const controls = Array.from(root.querySelectorAll('button, [role="button"], [aria-label], [title]'))
+            .filter(el => isVisibleElement(el) && !isDisabledChoice(el));
+        return controls.find(el => {
+            const label = normalizeLabel([
+                el.getAttribute('aria-label'),
+                el.getAttribute('title'),
+                el.textContent,
+                el.className
+            ].filter(Boolean).join(' ')).toLowerCase();
+            return /next|weiter|näch|naech|folgend|vorwärts|vorwaerts|right|arrow-right|chevron-right|small-arrow-right/.test(label);
+        }) || controls[controls.length - 1] || null;
+    }
+
+    function isBeginnDateAccepted(dateParts) {
+        const dateGroup = document.querySelector('.custom-date-input');
+        const dateInput = document.querySelector('input[name="beginn"]');
+        return dateInput?.value === dateParts.iso && dateGroup?.getAttribute('aria-invalid') === 'false';
+    }
+
+    async function setBeginnDateViaCalendar(dateParts) {
+        const dateGroup = document.querySelector('.custom-date-input');
+        const dateInput = document.querySelector('input[name="beginn"]');
+        const trigger = findBeginnDateTrigger(dateGroup);
+        if (!trigger) return false;
+        dispatchActivationEvents(trigger);
+        let popover = await waitForPredicate(() => getOpenDatePopover(trigger), {
+            timeoutMs: 1500,
+            intervalMs: 50,
+            label: 'open Beginn calendar'
+        }).catch(() => null);
+        if (!popover) return false;
+
+        let targetDay = findCalendarDayButton(popover, dateParts);
+        for (let i = 0; !targetDay && i < 14; i++) {
+            const nextButton = findCalendarNextButton(popover);
+            if (!nextButton) break;
+            dispatchActivationEvents(nextButton);
+            await wait(100);
+            popover = getOpenDatePopover(trigger) || popover;
+            targetDay = findCalendarDayButton(popover, dateParts);
+        }
+        if (!targetDay) return false;
+        dispatchActivationEvents(targetDay);
+        await waitForPredicate(() => dateInput?.value === dateParts.iso || isBeginnDateAccepted(dateParts), {
+            timeoutMs: 1500,
+            intervalMs: 50,
+            label: 'Beginn calendar selection'
+        }).catch(() => null);
+        dateGroup?.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+        return isBeginnDateAccepted(dateParts) || dateInput?.value === dateParts.iso;
+    }
+
+    async function setBeginnDateViaSegments(dateParts) {
+        const dateGroup = document.querySelector('.custom-date-input');
+        const dateInput = document.querySelector('input[name="beginn"]');
+        const daySegment = document.querySelector('[data-segment="day"], [data-reka-date-field-segment="day"]');
+        const monthSegment = document.querySelector('[data-segment="month"], [data-reka-date-field-segment="month"]');
+        const yearSegment = document.querySelector('[data-segment="year"], [data-reka-date-field-segment="year"]');
+
+        dateGroup?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+        dateGroup?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await typeIntoContentEditableSegment(daySegment, dateParts.visibleDay);
+        await wait(50);
+        await typeIntoContentEditableSegment(monthSegment, dateParts.visibleMonth);
+        await wait(50);
+        await typeIntoContentEditableSegment(yearSegment, dateParts.yyyy);
+        await wait(50);
+        if (dateInput) {
+            setNativeValue(dateInput, dateParts.iso);
+        }
+        dateGroup?.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertReplacementText', data: dateParts.display }));
+        dateGroup?.dispatchEvent(new Event('change', { bubbles: true }));
+        dateGroup?.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter', code: 'Enter' }));
+        dateGroup?.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'Enter', code: 'Enter' }));
+        dateGroup?.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+        if (dateInput) {
+            dateInput.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+        }
+        await wait(150);
+    }
+
+    async function setBeginnDateField(dateParts) {
+        const calendarAccepted = await setBeginnDateViaCalendar(dateParts).catch(err => {
+            console.warn('PDF Store BM 2.0: Beginn-Kalenderauswahl fehlgeschlagen, nutze Segment-Fallback.', err);
+            return false;
+        });
+        if (!calendarAccepted) {
+            await setBeginnDateViaSegments(dateParts);
+        }
+        const dateInput = document.querySelector('input[name="beginn"]');
+        const daySegment = document.querySelector('[data-segment="day"], [data-reka-date-field-segment="day"]');
+        const monthSegment = document.querySelector('[data-segment="month"], [data-reka-date-field-segment="month"]');
+        const yearSegment = document.querySelector('[data-segment="year"], [data-reka-date-field-segment="year"]');
+        console.log('PDF Store BM 2.0: Beginn gesetzt', {
+            iso: dateInput?.value,
+            display: `${daySegment?.textContent}.${monthSegment?.textContent}.${yearSegment?.textContent}`,
+            via: calendarAccepted ? 'calendar' : 'segments'
+        });
+    }
+
+    function findRadioByLabel(label, root = document) {
+        const targetLabel = normalizeLabel(label);
+        if (!targetLabel) return null;
+        return Array.from(root.querySelectorAll('[role="radio"]')).find(radio => {
+            const aria = normalizeLabel(radio.getAttribute('aria-label'));
+            let labelText = '';
+            if (radio.id) {
+                labelText = normalizeLabel(root.querySelector(`label[for="${CSS.escape(radio.id)}"]`)?.textContent || document.querySelector(`label[for="${CSS.escape(radio.id)}"]`)?.textContent);
+            }
+            const rowText = normalizeLabel(radio.closest('[data-slot="item"]')?.textContent);
+            return aria === targetLabel || labelText === targetLabel || rowText === targetLabel;
+        });
+    }
+
+    function findTextElementByExactLabel(label, root = document) {
+        const targetLabel = normalizeLabel(label);
+        if (!targetLabel) return null;
+        const selectors = [
+            'label',
+            '[data-slot="label"]',
+            '[role="option"]',
+            '[data-slot="item"]',
+            'button',
+            'span'
+        ];
+        for (const selector of selectors) {
+            const match = Array.from(root.querySelectorAll(selector)).find(el => normalizeLabel(el.textContent) === targetLabel);
+            if (match) return match;
+        }
+        return null;
+    }
+
+    function findActivatableForTextElement(el) {
+        if (!el) return null;
+        if (el.htmlFor) {
+            const forTarget = document.getElementById(el.htmlFor);
+            if (forTarget) return forTarget;
+        }
+        const item = el.closest('[data-slot="item"]');
+        return item?.querySelector('[role="radio"], button, [role="option"]') ||
+            el.closest('button,[role="radio"],[role="option"]') ||
+            el;
+    }
+
+    function findAccordionTriggerByLabel(label) {
+        const targetLabel = normalizeLabel(label);
+        return Array.from(document.querySelectorAll('[data-slot="header"] button[data-slot="trigger"], button[data-slot="trigger"]')).find(button => {
+            return normalizeLabel(button.querySelector('[data-slot="label"]')?.textContent || button.textContent) === targetLabel;
+        });
+    }
+
+    function getAccordionContentForTrigger(trigger) {
+        const controls = trigger?.getAttribute('aria-controls');
+        if (controls) {
+            const controlled = document.getElementById(controls);
+            if (controlled) return controlled;
+        }
+        const item = trigger?.closest('[data-slot="item"]');
+        return item?.querySelector('[data-slot="content"], [role="region"]') ||
+            trigger?.parentElement?.nextElementSibling ||
+            null;
+    }
+
+    function dispatchActivationEvents(el) {
+        el.scrollIntoView({ block: 'center', inline: 'nearest' });
+        el.focus?.();
+        el.click();
+    }
+
+    function isRadioChecked(radio) {
+        return radio.getAttribute('aria-checked') === 'true' || radio.getAttribute('data-state') === 'checked';
+    }
+
+    async function clickRadioByLabel(label, { required = true, root = document } = {}) {
+        const targetLabel = normalizeLabel(label);
+        if (!targetLabel) return false;
+        const radio = await waitForPredicate(() => findRadioByLabel(targetLabel, root) || findActivatableForTextElement(findTextElementByExactLabel(targetLabel, root)), {
+            timeoutMs: 1500,
+            label: `selection ${targetLabel}`
+        }).catch(err => {
+            if (required) throw err;
+            return null;
+        });
+        if (!radio) return false;
+        dispatchActivationEvents(radio);
+        await waitForPredicate(() => isRadioChecked(radio), {
+            timeoutMs: 1500,
+            intervalMs: 100,
+            label: `checked radio ${targetLabel}`
+        });
+        console.log('PDF Store BM 2.0: Auswahl gesetzt', targetLabel, {
+            checked: radio.getAttribute('aria-checked'),
+            state: radio.getAttribute('data-state')
+        });
+        return true;
+    }
+
+    async function selectSonstigeFallback() {
+        const sonstigeTrigger = await waitForPredicate(() => findAccordionTriggerByLabel('Sonstige'), {
+            timeoutMs: 1500,
+            label: 'Sonstige accordion trigger'
+        });
+        if (sonstigeTrigger.getAttribute('aria-expanded') !== 'true') {
+            dispatchActivationEvents(sonstigeTrigger);
+            await wait(150);
+        }
+        const content = await waitForPredicate(() => {
+            const region = getAccordionContentForTrigger(sonstigeTrigger);
+            return region && !region.hidden ? region : null;
+        }, {
+            timeoutMs: 1500,
+            label: 'Sonstige accordion content'
+        });
+        await clickRadioByLabel('Sonstige', { required: true, root: content });
+        console.log('PDF Store BM 2.0: Fallback Sonstige gewählt.');
+        return true;
+    }
+
+    async function selectWizardClassificationOrFallback({ art, kategorisierung, gespraechsnotizName }) {
+        if (!art || !kategorisierung) {
+            await selectSonstigeFallback();
+            return;
+        }
+        try {
+            await clickRadioByLabel(art);
+            await clickRadioByLabel(kategorisierung);
+            if (gespraechsnotizName) {
+                await waitForPredicate(() => normalizeLabel(document.body.textContent).includes(gespraechsnotizName), {
+                    timeoutMs: 1500,
+                    label: `rendered product ${gespraechsnotizName}`
+                });
+                await clickRadioByLabel(gespraechsnotizName, { required: true });
+            }
+        } catch (err) {
+            console.warn('PDF Store BM 2.0: Wizard-Auswahl unvollständig, fallback auf Sonstige.', {
+                art,
+                kategorisierung,
+                gespraechsnotizName,
+                error: err
+            });
+            await selectSonstigeFallback();
+        }
+    }
+
+    function makeTemplateFilename(template) {
+        const filenameBase = (template.name || template.button_name || 'Antrag').replace(/[\\/:*?"<>|]+/g, '_');
+        return `${filenameBase}.pdf`;
+    }
+
+    async function openNewVorgangWizard() {
+        if (!location.href.includes('/bm-frontend/eigenevorgaenge')) {
+            history.pushState({}, '', '/bm-frontend/eigenevorgaenge');
+            window.dispatchEvent(new PopStateEvent('popstate'));
+            await wait(150);
+        }
+        const button = findButtonByLabel('Neuer Vorgang');
+        if (!button) throw new Error('Der Button "Neuer Vorgang" wurde nicht gefunden.');
+        button.click();
+        await waitForPredicate(() => normalizeLabel(document.body.textContent).includes('Vorgang anlegen'), {
+            timeoutMs: 1500,
+            label: 'Vorgang anlegen view'
+        });
+    }
+
+    async function fillFrontendWizard(template, pdfBlob) {
+        const art = normalizeLabel(template.art);
+        const kategorisierung = normalizeLabel(template.kategorisierung);
+        const gespraechsnotizName = normalizeLabel(template.gespraechsnotiz_name);
+
+        await openNewVorgangWizard();
+        await selectWizardClassificationOrFallback({ art, kategorisierung, gespraechsnotizName });
+
+        const weiter = await waitForPredicate(() => {
+            const button = document.querySelector('#weiter') || findButtonByLabel('Weiter');
+            return button && !button.disabled ? button : null;
+        }, { timeoutMs: 1500, label: 'enabled Weiter button' });
+        weiter.click();
+
+        const uploadInput = await waitForElement('#assetsFieldHandle', { timeoutMs: 1500 });
+        const titleInput = document.querySelector('input[name="vorgangBezeichnung"]');
+        if (titleInput) {
+            setNativeValue(titleInput, template.name || template.button_name || 'Antrag');
+        }
+
+        await setBeginnDateField(getNextFirstOfMonthMoreThanTenDaysOut());
+
+        const file = new File([pdfBlob], makeTemplateFilename(template), { type: 'application/pdf' });
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(file);
+        uploadInput.files = dataTransfer.files;
+        uploadInput.dispatchEvent(new Event('input', { bubbles: true }));
+        uploadInput.dispatchEvent(new Event('change', { bubbles: true }));
+
+        const anlegen = await waitForPredicate(() => {
+            const anlegenButton = document.querySelector('#anlegen') || findButtonByLabel('Anlegen');
+            return anlegenButton && !anlegenButton.disabled ? anlegenButton : null;
+        }, { timeoutMs: 1500, label: 'enabled Anlegen button after date/file autofill' }).catch(err => {
+            console.warn('PDF Store BM 2.0: Anlegen blieb nach Beginn-/PDF-Autofill deaktiviert. Date validation may not have accepted the value.', err);
+            return null;
+        });
+        if (anlegen) {
+            dispatchActivationEvents(anlegen);
+            console.log('PDF Store BM 2.0: Vorgang angelegt.');
+        }
+        return { file, submitted: !!anlegen };
+    }
+
+    async function initFrontendStore() {
+        addCss(`
+            .tecis-store-launcher {
+                position: fixed;
+                right: 24px;
+                bottom: 88px;
+                z-index: 2147483000;
+                border: 0;
+                border-radius: 999px;
+                background: #163b5c;
+                color: white;
+                min-width: 44px;
+                height: 44px;
+                padding: 0 16px;
+                box-shadow: 0 14px 34px rgba(16, 24, 40, .22);
+                cursor: pointer;
+                font: 600 14px/1.2 system-ui, -apple-system, Segoe UI, sans-serif;
+            }
+            .tecis-store-overlay {
+                position: fixed;
+                inset: 0;
+                z-index: 2147483001;
+                background: rgba(15, 23, 42, .28);
+                display: none;
+                align-items: flex-start;
+                justify-content: flex-end;
+                padding: 72px 28px 28px;
+                box-sizing: border-box;
+            }
+            .tecis-store-overlay[data-open="true"] { display: flex; }
+            .tecis-store-panel {
+                width: min(520px, calc(100vw - 32px));
+                max-height: calc(100vh - 112px);
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+                background: #fff;
+                color: #172033;
+                border: 1px solid rgba(15, 23, 42, .12);
+                border-radius: 8px;
+                box-shadow: 0 24px 80px rgba(15, 23, 42, .24);
+                font: 14px/1.45 system-ui, -apple-system, Segoe UI, sans-serif;
+            }
+            .tecis-store-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 16px;
+                padding: 18px 20px;
+                border-bottom: 1px solid #e5e7eb;
+            }
+            .tecis-store-title { margin: 0; font-size: 18px; font-weight: 700; }
+            .tecis-store-close {
+                border: 0;
+                background: transparent;
+                color: #334155;
+                cursor: pointer;
+                font-size: 24px;
+                line-height: 1;
+                padding: 2px 6px;
+            }
+            .tecis-store-body {
+                overflow: auto;
+                padding: 14px 20px 20px;
+            }
+            .tecis-store-search {
+                width: 100%;
+                height: 38px;
+                box-sizing: border-box;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                background: #fff;
+                color: #0f172a;
+                padding: 0 11px;
+                margin: 0 0 14px;
+                font: 14px/1.2 system-ui, -apple-system, Segoe UI, sans-serif;
+                outline: none;
+            }
+            .tecis-store-search:focus {
+                border-color: #163b5c;
+                box-shadow: 0 0 0 2px rgba(22, 59, 92, .15);
+            }
+            .tecis-store-status {
+                margin: 0 0 10px;
+                color: #475569;
+                font-size: 13px;
+            }
+            .tecis-store-list {
+                display: grid;
+                gap: 10px;
+            }
+            .tecis-store-card {
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                padding: 12px;
+                display: grid;
+                gap: 10px;
+                background: #fff;
+            }
+            .tecis-store-card-title {
+                font-weight: 650;
+                color: #0f172a;
+            }
+            .tecis-store-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            .tecis-store-action {
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                background: #fff;
+                color: #0f172a;
+                cursor: pointer;
+                padding: 7px 10px;
+                font-weight: 600;
+            }
+            .tecis-store-action[data-primary="true"] {
+                border-color: #163b5c;
+                background: #163b5c;
+                color: #fff;
+            }
+            .tecis-store-action:disabled {
+                opacity: .6;
+                cursor: wait;
+            }
+            .tecis-store-empty {
+                color: #64748b;
+                border: 1px dashed #cbd5e1;
+                border-radius: 8px;
+                padding: 14px;
+                text-align: center;
+            }
+        `);
+
+        const mandantennr = getMandantenNrFromUrlOrStorage();
+        const customerID = decodeMandantenNr(mandantennr);
+        let personalData = {};
+        let templates = [];
+        let statusText = 'Lade PDF-Templates...';
+
+        const launcher = document.createElement('button');
+        launcher.type = 'button';
+        launcher.className = 'tecis-store-launcher';
+        launcher.textContent = 'PDF Store';
+
+        const overlay = document.createElement('div');
+        overlay.className = 'tecis-store-overlay';
+        overlay.innerHTML = `
+            <section class="tecis-store-panel" role="dialog" aria-modal="true" aria-label="PDF Store">
+                <div class="tecis-store-header">
+                    <h2 class="tecis-store-title">PDF Store</h2>
+                    <button type="button" class="tecis-store-close" aria-label="Schließen">×</button>
+                </div>
+                <div class="tecis-store-body">
+                    <p class="tecis-store-status"></p>
+                    <input type="search" class="tecis-store-search" placeholder="PDF-Templates suchen" aria-label="PDF-Templates suchen">
+                    <div class="tecis-store-list"></div>
+                </div>
+            </section>
+        `;
+
+        document.body.appendChild(launcher);
+        document.body.appendChild(overlay);
+
+        const searchEl = overlay.querySelector('.tecis-store-search');
+        const statusEl = overlay.querySelector('.tecis-store-status');
+        const listEl = overlay.querySelector('.tecis-store-list');
+
+        function matchesTemplateSearch(template, query) {
+            if (!query) return true;
+            const haystack = [
+                template.button_name,
+                template.name,
+                template.gespraechsnotiz_name,
+                template.kategorisierung,
+                template.art,
+                template.id
+            ].map(value => normalizeLabel(value).toLowerCase()).join(' ');
+            return haystack.includes(query);
+        }
+
+        function render() {
+            statusEl.textContent = statusText;
+            listEl.innerHTML = '';
+            const query = normalizeLabel(searchEl.value).toLowerCase();
+            const visibleTemplates = templates.filter(template => matchesTemplateSearch(template, query));
+            if (!visibleTemplates.length && templates.length) {
+                const empty = document.createElement('div');
+                empty.className = 'tecis-store-empty';
+                empty.textContent = 'Keine passenden PDF-Templates gefunden.';
+                listEl.appendChild(empty);
+                return;
+            }
+            visibleTemplates.forEach(template => {
+                const card = document.createElement('div');
+                card.className = 'tecis-store-card';
+                card.innerHTML = `
+                    <div class="tecis-store-card-title"></div>
+                    <div class="tecis-store-actions">
+                        <button type="button" class="tecis-store-action" data-primary="true" data-action="autofill">Vorgang + PDF anlegen</button>
+                        <button type="button" class="tecis-store-action" data-action="download">PDF herunterladen</button>
+                    </div>
+                `;
+                card.querySelector('.tecis-store-card-title').textContent = template.button_name || template.name || `Template ${template.id}`;
+                card.querySelector('[data-action="autofill"]').addEventListener('click', async (event) => {
+                    const button = event.currentTarget;
+                    button.disabled = true;
+                    button.textContent = 'Öffne Wizard...';
+                    try {
+                        const pdfBlob = await fetchTemplatePdfBlob(template, personalData);
+                        overlay.dataset.open = 'false';
+                        const result = await fillFrontendWizard(template, pdfBlob);
+                        if (!result.submitted) {
+                            alert('PDF wurde eingesetzt. Bitte Pflichtfelder prüfen; "Anlegen" ist noch deaktiviert.');
+                        }
+                    } catch (err) {
+                        console.error('Could not prepare BM 2.0 Vorgang.', err);
+                        alert('Vorgang konnte nicht automatisch vorbereitet werden. Details stehen in der Konsole.');
+                    } finally {
+                        button.disabled = false;
+                        button.textContent = 'Vorgang + PDF anlegen';
+                    }
+                });
+                card.querySelector('[data-action="download"]').addEventListener('click', async (event) => {
+                    const button = event.currentTarget;
+                    button.disabled = true;
+                    button.textContent = 'Bereite vor...';
+                    try {
+                        const pdfBlob = await fetchTemplatePdfBlob(template, personalData);
+                        downloadBlob(pdfBlob, makeTemplateFilename(template));
+                    } catch (err) {
+                        console.error('Could not prepare PDF.', err);
+                        alert('PDF konnte nicht vorbereitet werden. Details stehen in der Konsole.');
+                    } finally {
+                        button.disabled = false;
+                        button.textContent = 'PDF herunterladen';
+                    }
+                });
+                listEl.appendChild(card);
+            });
+        }
+
+        launcher.addEventListener('click', () => {
+            overlay.dataset.open = 'true';
+            render();
+        });
+        overlay.querySelector('.tecis-store-close').addEventListener('click', () => {
+            overlay.dataset.open = 'false';
+        });
+        searchEl.addEventListener('input', render);
+        overlay.addEventListener('click', (event) => {
+            if (event.target === overlay) overlay.dataset.open = 'false';
+        });
+
+        try {
+            templates = await fetchPdfTemplates();
+            personalData = await fetchFrontendPersonalData(mandantennr);
+            statusText = customerID
+                ? `Bereit. Mandant ${customerID} erkannt. Der Store wählt Art/Kategorie/Produkt und setzt die PDF im Upload-Feld ein.`
+                : 'Bereit. Mandantennummer nicht erkannt; PDF-Felder ohne CRM-Daten werden leer gelassen.';
+        } catch (err) {
+            console.error('Failed to fetch PDF templates:', err);
+            statusText = 'PDF-Templates konnten nicht geladen werden.';
+        }
+        render();
+    }
+
+    if (location.href.includes('/bm-frontend/')) {
+        await initFrontendStore();
+        return;
+    }
+
     function waitForHeaderMatch(selector, expectedText, timeout = 600000) {
         return new Promise((resolve, reject) => {
             const startTime = Date.now();
@@ -68,15 +998,9 @@ export async function initDokumenteDatenbank({ fetchJson, addCss, PDFLibRef = PD
     }
 
     // --- Step A: Fetch available PDF templates from your server ---
-    const pdfTemplatesUrl = 'https://mopoliti.de/tecis/Store/get_pdf_templates.php';
     let pdfTemplates = [];
     try {
-        const data = await fetchJson(pdfTemplatesUrl);
-        if (data.status === 'success' && Array.isArray(data.templates)) {
-            pdfTemplates = data.templates;
-        } else {
-            throw new Error(data.message || 'Error retrieving PDF templates');
-        }
+        pdfTemplates = await fetchPdfTemplates();
     } catch (err) {
         console.error('Failed to fetch PDF templates:', err);
         return;

@@ -1,5 +1,8 @@
 (function() {
     let addAutofillNextOpen = false;
+    // Im neuen BM-2.0-Frontend steht kein wibiid in der URL; es wird vom Content-Script
+    // aus der mandantennr aufgelöst und hier injiziert (base64 der haushaltId-UUID).
+    let injectedWibiid = null;
 
     function isNormalUrl(u) {
         return typeof u === "string" && !/^(?:javascript:|data:|blob:)/i.test(u);
@@ -28,8 +31,9 @@
         }
 
         const context = getCurrentContextParams();
-        if (context.wibiid && !target.searchParams.has("wibiid")) {
-            target.searchParams.set("wibiid", context.wibiid);
+        const wibiid = context.wibiid || injectedWibiid;
+        if (wibiid && !target.searchParams.has("wibiid")) {
+            target.searchParams.set("wibiid", wibiid);
         }
         if (context.svhvnr && !target.searchParams.has("svhvnr")) {
             target.searchParams.set("svhvnr", context.svhvnr);
@@ -66,6 +70,9 @@
         if (!event.data || event.data.source !== 'tecis-extension') return;
         if (event.data.type === 'set-autofill-next-open') {
             setAutofillNextOpen();
+        }
+        if (event.data.type === 'set-wibiid' && typeof event.data.wibiid === 'string') {
+            injectedWibiid = event.data.wibiid;
         }
     });
 

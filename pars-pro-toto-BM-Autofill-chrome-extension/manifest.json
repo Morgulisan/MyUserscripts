@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Beratungsmappen Autofill Pars Pro Toto",
-  "version": "2.2.1",
+  "version": "2.2.5",
   "description": "",
   "icons": {
     "16": "icons/icon-16.png",
@@ -22,6 +22,7 @@
   },
   "host_permissions": [
     "https://bm.bp.vertrieb-plattform.de/*",
+    "https://editor.bm.bp.vertrieb-plattform.de/*",
     "https://startkonzept.bp.vertrieb-plattform.de/*",
     "https://www.crm.vertrieb-plattform.de/*",
     "https://mopoliti.de/*"
@@ -31,23 +32,35 @@
   ],
   "content_scripts": [
     {
-      "matches": ["https://bm.bp.vertrieb-plattform.de/bm/*"],
+      "matches": [
+        "https://bm.bp.vertrieb-plattform.de/bm/*",
+        "https://bm.bp.vertrieb-plattform.de/bm-frontend/*"
+      ],
       "js": ["content/page-window-open-hook.js"],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": ["https://bm.bp.vertrieb-plattform.de/bm/*"],
+      "matches": [
+        "https://bm.bp.vertrieb-plattform.de/bm/*",
+        "https://bm.bp.vertrieb-plattform.de/bm-frontend/*"
+      ],
       "js": ["content/tecis-bm-gespraechsnotiz-autofill.js"],
       "run_at": "document_start"
     },
     {
-      "matches": ["https://bm.bp.vertrieb-plattform.de/edocbox/editor/ui/*"],
+      "matches": [
+        "https://editor.bm.bp.vertrieb-plattform.de/edocbox/editor/ui/*",
+        "https://bm.bp.vertrieb-plattform.de/edocbox/editor/ui/*"
+      ],
       "js": ["content/tecis-bm-gespraechsnotiz-autofill.js"],
       "run_at": "document_start"
     },
     {
-      "matches": ["https://bm.bp.vertrieb-plattform.de/bm/*"],
+      "matches": [
+        "https://bm.bp.vertrieb-plattform.de/bm/*",
+        "https://bm.bp.vertrieb-plattform.de/bm-frontend/*"
+      ],
       "js": ["lib/pdf-lib.js", "content/tecis-dokumente-datenbank.js"],
       "run_at": "document_idle"
     },

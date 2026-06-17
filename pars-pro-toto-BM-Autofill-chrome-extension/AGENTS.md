@@ -22,6 +22,14 @@
    - Muss auf allen Seiten aktiv sein (`<all_urls>`).
    - Ersetzt nur Links, die noch kein `data-link-replaced` Attribut haben.
 
+## Beratungsmappe 2.0 (Migration, Stand 2026-06-17)
+- **Drei Zielumgebungen**: Legacy-Liste `…/bm/*` (PrimeFaces/JSF, bis 2028), neues Frontend `…/bm-frontend/*` (Nuxt 3 / Vue SPA), Editor `https://editor.bm.bp.vertrieb-plattform.de/edocbox/editor/ui/*` (eigene Subdomain, gilt für BEIDE Frontends).
+- **Editor-Subdomain**: `host_permissions` + Editor-`content_scripts.matches` decken `editor.bm…` ab (alte `bm…/edocbox`-Matches bleiben übergangsweise). `pAction=load` ist dort ein POST; XHR-Intercept ist method-agnostisch. Fallback-URL wird origin-relativ gebaut.
+- **window.open** liefert in beiden Frontends nur `documentid`+`referrer`. `wibiid`+`autofill=true` werden vom MAIN-world `page-window-open-hook.js` angehängt. Im neuen Frontend gibt es kein `wibiid` in der URL → `initGespraechsnotizAutofillFrontend` löst es aus `mandantennr` via `GET /api/service/haushalt?mandantenNr=<b64>` (→ `haushaltId`-UUID, dann `btoa(...)`) auf und injiziert es per `postMessage {type:'set-wibiid'}`.
+- **Neues Frontend**: utility-CSS, keine stabilen Klassen → Brain-Icon-Trigger wird an die Actions-Leiste neben `span.iconify.i-custom\:edit` gehängt (per MutationObserver, SPA-Routing).
+- **Store BM 2.0**: `tecis-dokumente-datenbank` läuft auf `/bm-frontend/*` als getrenntes Popup. Es lädt PDF-Templates wie bisher, bereitet PDFs vor, wählt im neuen Wizard automatisch `art` → `kategorisierung` → optional `gespraechsnotiz_name`, klickt `Weiter` und setzt die PDF in `#assetsFieldHandle`. Der Nutzer prüft danach Pflichtfelder und klickt `Anlegen`. Network-Recon zeigte `POST /api/service/documents/validatepdf` und `POST /api/service/eigenervorgang/save` mit `FormData`; Direkt-Save per API bleibt bewusst offen, weil die JSON-Blob-Struktur nicht vollständig rekonstruiert ist und Save bei unvollständiger UI-Validierung 500 liefern kann.
+- **Offen/Blockiert**: Editor-Feldelemente sind jetzt `eed-fieldcheckbox`/`eed-fieldradio`/`eed-fieldtext` (kein `mat-checkbox`) → echte DOM-Verifikation bleibt nötig. Store-Direktupload braucht die neue Create-Vorgang-/Upload-API. Frontend-Features sind vorerst extension-only (Userscripts matchen `/bm-frontend/` nicht).
+
 ## Technische Details
 - **Cross-Origin Fetch**: Nur im Service Worker (Background) erlaubt, daher wird jede API-Anfrage per `chrome.runtime.sendMessage` an `background.js` delegiert.
 - **PDF-Lib**: Lokal über `lib/pdf-lib.js` eingebunden, keine externe CDN-Abhängigkeit.

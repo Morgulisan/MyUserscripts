@@ -148,7 +148,7 @@ export function initGespraechsnotizAutofillList({ installWindowOpenHook, signalP
 // ===== BP Editor Autofill (mit Berater-Kontext) =====
 export function initGespraechsnotizAutofillEditor({ fetchJson, createDocumentJsonPromise }) {
     // Only run this block on the editor UI
-    if (!location.href.startsWith("https://bm.bp.vertrieb-plattform.de/edocbox/editor/ui/")) return;
+    if (!location.pathname.startsWith("/edocbox/editor/ui/")) return;
 
     // ------- 0. DATA INTERCEPTION (Run immediately) -------
     // We create a promise that resolves when the page loads its own document JSON
@@ -550,15 +550,21 @@ export function initGespraechsnotizAutofillEditor({ fetchJson, createDocumentJso
             let input = wrapperEl.querySelector('.frame input.input');
             if (input) return {kind:'text', el: input};
 
-            const mat = wrapperEl.querySelector('mat-checkbox');
-            if (mat) {
-                const isRadioStyle = mat.classList.contains('radio');
-                const inp = mat.querySelector('input[type="checkbox"]');
-                return {kind: isRadioStyle ? 'radio' : 'checkbox', el: mat, inp};
-            }
+            // Neuer Editor (BM 2.0): Checkboxen UND Radios werden identisch als
+            // div.formfield.checkbox mit innerem div.checkbox_input gerendert – kein
+            // natives <input>, kein mat-checkbox. Der gesetzt-Zustand hängt allein an
+            // <i class="...checker">. Klick auf .checkbox_input togglet zuverlässig.
+            const toggle = wrapperEl.querySelector('.checkbox_input');
+            if (toggle) return {kind:'checkbox', el: toggle};
+
             input = wrapperEl.querySelector('input');
             if (input) return {kind: input.type==='checkbox' ? 'checkbox' : 'text', el: input};
             throw new Error('No actionable input element found inside .formfield');
+        }
+
+        // Gesetzt-Zustand im neuen Editor: Vorhandensein von <i class="checker">.
+        function isFieldChecked(wrapperEl){
+            return !!wrapperEl.querySelector('i.checker');
         }
 
         function setNativeInputValue(input, value){
@@ -924,6 +930,12 @@ export function initGespraechsnotizAutofillEditor({ fetchJson, createDocumentJso
 
         let pageData;
         const wibiid = context.wibiid;
+        if (!wibiid) {
+            removeOverlay();
+            console.error('Autofill-Fehler: URL enthält autofill=true, aber keine wibiid.', { href: location.href });
+            alert('Autofill kann nicht starten: In der Editor-URL fehlt wibiid. Bitte den Autofill über das Icon in der Beratungsmappe öffnen.');
+            return;
+        }
 
         // Schritt 1: Lade die grundlegenden Dokument-Daten. Dies ist immer notwendig.
         try {
@@ -933,7 +945,9 @@ export function initGespraechsnotizAutofillEditor({ fetchJson, createDocumentJso
             console.log("Interceptor timed out or failed, trying manual fetch...");
             const docId = qs.get('documentid');
             if (docId) {
-                const fallbackUrl = `https://bm.bp.vertrieb-plattform.de/edocbox/editor/servlet/documentViewer?pAction=load&documentid=${docId}`;
+                // Editor zog auf eigene Subdomain um (editor.bm…); Origin-relativ bauen,
+                // damit der Fallback unabhängig von der konkreten Editor-Domain funktioniert.
+                const fallbackUrl = `${location.origin}/edocbox/editor/servlet/documentViewer?pAction=load&documentid=${docId}`;
                 pageData = await gmFetchJson(fallbackUrl, { withCredentials: true });
             }
         }
@@ -997,4 +1011,138 @@ export function initGespraechsnotizAutofillEditor({ fetchJson, createDocumentJso
         run();
     }
 
+}
+
+// ===== Neues BM 2.0 Frontend (Nuxt SPA): Autofill-Trigger pro Zeile =====
+// Das neue Frontend reicht beim window.open nur documentid+referrer an den Editor durch.
+// Wir lösen einmalig wibiid (UUID) aus der mandantennr auf, geben sie base64-kodiert an
+// den window.open-Hook (signalWibiid) und fügen pro Dokumentzeile ein Autofill-Icon ein, das
+// den nächsten window.open als autofill markiert und dann das native "Bearbeiten" auslöst.
+export function initGespraechsnotizAutofillFrontend({ fetchJson, signalWibiid = () => {}, signalPageAutofillNextOpen = () => {} }) {
+    if (!location.href.includes('/bm-frontend/')) return;
+
+    // mandantennr ist nur in der INITIALEN URL vorhanden (SPA-Redirect auf /eigenevorgaenge
+    // erfolgt ohne Reload), daher sofort beim Skriptstart abgreifen.
+    function getFrontendMandantennr() {
+        const current = new URLSearchParams(location.search).get('mandantennr');
+        if (current) {
+            sessionStorage.setItem('tecis-autofill-mandantennr', current);
+            return current;
+        }
+        return sessionStorage.getItem('tecis-autofill-mandantennr');
+    }
+
+    const mandantennr = getFrontendMandantennr();
+    let resolvedWibiidB64 = sessionStorage.getItem('tecis-autofill-wibiid') || null;
+    let wibiidPromise = null;
+
+    // wibiid auflösen: /api/service/haushalt liefert die haushaltId (UUID). Der Editor erwartet
+    // wibiid als base64 dieser UUID (entspricht exakt der Legacy-?wibiid=).
+    async function resolveAndSignalWibiid() {
+        if (resolvedWibiidB64) {
+            signalWibiid(resolvedWibiidB64);
+            return resolvedWibiidB64;
+        }
+        if (wibiidPromise) return wibiidPromise;
+        if (!mandantennr) {
+            console.warn('Autofill (Frontend): keine mandantennr in der URL gefunden – wibiid kann nicht aufgelöst werden.');
+            return null;
+        }
+        wibiidPromise = (async () => {
+            try {
+                const url = 'https://bm.bp.vertrieb-plattform.de/api/service/haushalt?mandantenNr=' + encodeURIComponent(mandantennr);
+                const data = await fetchJson(url);
+                const haushaltId = data && (data.haushaltId || data.id || (data.haushalt && data.haushalt.id));
+                if (haushaltId) {
+                    resolvedWibiidB64 = btoa(haushaltId);
+                    sessionStorage.setItem('tecis-autofill-wibiid', resolvedWibiidB64);
+                    signalWibiid(resolvedWibiidB64);
+                    console.log('Autofill (Frontend): wibiid aufgelöst.');
+                    return resolvedWibiidB64;
+                } else {
+                    console.warn('Autofill (Frontend): haushaltId nicht in /api/service/haushalt-Antwort gefunden.', data);
+                    return null;
+                }
+            } catch (err) {
+                console.error('Autofill (Frontend): Konnte wibiid nicht auflösen.', err);
+                return null;
+            } finally {
+                wibiidPromise = null;
+            }
+        })();
+        return wibiidPromise;
+    }
+    resolveAndSignalWibiid();
+
+    // Autofill-Icon als Inline-SVG, damit wir nicht vom Icon-Set (iconify) der Seite abhängen.
+    function makeAutofillIcon() {
+        const span = document.createElement('span');
+        span.className = 'tecis-autofill-trigger cursor-pointer w-5 h-5';
+        span.setAttribute('role', 'button');
+        span.title = 'Autofill (Gesprächsnotiz)';
+        span.style.display = 'inline-flex';
+        span.style.alignItems = 'center';
+        span.style.justifyContent = 'center';
+        span.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+            + '<path d="M15 4.5l4.5 4.5"/>'
+            + '<path d="M13.5 6l4.5 4.5-9.7 9.7a2.1 2.1 0 0 1-3 0l-1.5-1.5a2.1 2.1 0 0 1 0-3L13.5 6z"/>'
+            + '<path d="M12 7.5l4.5 4.5"/>'
+            + '<path d="M5 4v3"/>'
+            + '<path d="M3.5 5.5h3"/>'
+            + '<path d="M19 15v3"/>'
+            + '<path d="M17.5 16.5h3"/>'
+            + '</svg>';
+        return span;
+    }
+
+    function isFrontendGespraechsnotizRow(row) {
+        const firstCell = row && row.querySelector('td[data-slot="td"]');
+        return firstCell && firstCell.textContent.trim() === 'Gesprächsnotiz';
+    }
+
+    function enhanceActionsRow(editIcon) {
+        const container = editIcon.parentElement;
+        if (!container) return;
+        const row = editIcon.closest('tr[data-slot="tr"], tr');
+        const existingAutofill = container.querySelector('.tecis-autofill-trigger, .tecis-autofill-brain');
+        if (!isFrontendGespraechsnotizRow(row)) {
+            if (existingAutofill) existingAutofill.remove();
+            return;
+        }
+        if (existingAutofill) return; // schon ergänzt
+
+        const autofillIcon = makeAutofillIcon();
+        autofillIcon.addEventListener('click', async (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            autofillIcon.style.pointerEvents = 'none';
+            autofillIcon.style.opacity = '.55';
+            const wibiid = await resolveAndSignalWibiid();
+            autofillIcon.style.pointerEvents = '';
+            autofillIcon.style.opacity = '';
+            if (!wibiid) {
+                alert('Autofill kann nicht gestartet werden: Die wibiid konnte nicht aus dem aktuellen Mandanten aufgelöst werden. Bitte die Mappe einmal über die Mandanten-URL öffnen.');
+                return;
+            }
+            // 1) Den nächsten window.open als Autofill markieren (Hook hängt wibiid+autofill an)
+            signalPageAutofillNextOpen();
+            // 2) Das native "Bearbeiten" auslösen -> Seite ruft window.open auf
+            editIcon.click();
+        }, true);
+
+        container.insertBefore(autofillIcon, editIcon);
+    }
+
+    function scan() {
+        // Bearbeiten-Icons der Nuxt-Actions-Leiste: <span class="iconify i-custom:edit ...">
+        document.querySelectorAll('span.iconify.i-custom\\:edit').forEach(enhanceActionsRow);
+    }
+
+    const mo = new MutationObserver(() => scan());
+    mo.observe(document.documentElement, { subtree: true, childList: true });
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', scan);
+    } else {
+        scan();
+    }
 }
