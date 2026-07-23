@@ -2,7 +2,8 @@ export async function initDokumenteDatenbank({ fetchJson, addCss, PDFLibRef = PD
 
     try {
         addCss(`
-        div.awd-content-fixed { top: 80px !important; }
+        div.awd-content-fixed { top: 120px !important; }
+        div.awd-content-scroll-with-fixed { top: 180px !important; }
         div.awd-concept-title-buttons { height: 85px !important; }
     `);
     } catch (e){
