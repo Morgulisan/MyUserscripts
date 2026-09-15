@@ -1,15 +1,17 @@
 // ==UserScript==
 // @name         tecis BM Gesprächsnotiz Autofill
 // @namespace    http://tampermonkey.net/
-// @version      2.1.0
+// @version      2.1.1
 // @description  Befüllt die Gesprächsnotiz wenn ?autofill=true gesetzt ist und fügt einen Autofill button in der BM hinzu
 // @author       Malte Kretzschmar
 // @match        https://bm.bp.vertrieb-plattform.de/bm/*
-// @match        https://bm.bp.vertrieb-plattform.de/edocbox/editor/ui/?documentid=*
+// @match        https://bm.bp.vertrieb-plattform.de/edocbox/editor/ui/*
+// @match        https://editor.bm.bp.vertrieb-plattform.de/edocbox/editor/ui/*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
 // @grant        GM.xmlHttpRequest
 // @connect      bm.bp.vertrieb-plattform.de
+// @connect      editor.bm.bp.vertrieb-plattform.de
 // @connect      startkonzept.bp.vertrieb-plattform.de
 // @connect      mopoliti.de
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=tecis.de
